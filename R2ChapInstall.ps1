@@ -1,10 +1,10 @@
-﻿# ==========================================
+# ==========================================
 # R2CHAP INSTALL - Main GUI Launcher
-# Version : v0.1
+# Version : v1.0
 # Dépôt : https://github.com/r2chap/R2CHAPINSTALL
 # ==========================================
 
-$ScriptVersion = "v0.1"
+$ScriptVersion = "v1.0"
 $UpdateUrl     = "https://raw.githubusercontent.com/r2chap/R2CHAPINSTALL/main/R2ChapInstall.ps1"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -38,9 +38,9 @@ $LocalTargetDir = "C:\r2chap"
 $localLogo      = Join-Path $LocalTargetDir "Logo.png"
 
 # Chemins des images dans le dossier assets
-$assetsDir       = Join-Path $ScriptDir "assets"
-$imgUpdatePath   = Join-Path $assetsDir "mise-a-jour-du-systeme.png"
-$imgSettingsPath = Join-Path $assetsDir "parametres.png"
+$assetsDir     = Join-Path $ScriptDir "assets"
+$imgUpdatePath = Join-Path $assetsDir "mise-a-jour-du-systeme.png"
+# $imgSettingsPath = Join-Path $assetsDir "parametres.png" (Désactivé)
 
 # ------------------------------------------
 # HELPER : REDIMENSIONNEMENT DES IMAGES (PNG)
@@ -67,46 +67,86 @@ function Get-ResizedImage ($filePath, $width, $height) {
 # FONCTIONS DES BOUTONS EN-TÊTE ET ACTIONS
 # ------------------------------------------
 function Check-AppUpdate {
+    $rawUrl = "https://raw.githubusercontent.com/r2chap/R2CHAPINSTALL/main/R2ChapInstall.ps1"
+    $zipUrl = "https://github.com/r2chap/R2CHAPINSTALL/archive/refs/heads/main.zip"
+    
     try {
-        $tempScriptPath = Join-Path $env:TEMP "R2ChapInstall_new.ps1"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $UpdateUrl -OutFile $tempScriptPath -UseBasicParsing -ErrorAction Stop
         
-        $newContent = Get-Content $tempScriptPath -Raw
-        if ($newContent -match '\$ScriptVersion\s*=\s*"([^"]+)"') {
+        # 1. Vérification de la version distante via Raw GitHub
+        $remoteScriptContent = Invoke-RestMethod -Uri $rawUrl -UseBasicParsing -ErrorAction Stop
+        
+        if ($remoteScriptContent -match '\$ScriptVersion\s*=\s*"([^"]+)"') {
             $remoteVersion = $matches[1]
-            if ($remoteVersion -ne $ScriptVersion) {
-                $dialogResult = [System.Windows.Forms.MessageBox]::Show(
-                    "Une nouvelle version ($remoteVersion) est disponible sur GitHub !`n`nVoulez-vous mettre à jour le script maintenant ?", 
-                    "Mise à jour disponible", 
-                    "YesNo", 
+            
+            if ($remoteVersion -eq $ScriptVersion) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Vous possédez déjà la version la plus récente ($ScriptVersion).", 
+                    "À jour", 
+                    "OK", 
                     "Information"
                 )
-                if ($dialogResult -eq "Yes") {
-                    Copy-Item -Path $tempScriptPath -Destination $PSCommandPath -Force
-                    Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
-                    [System.Windows.Forms.MessageBox]::Show("Mise à jour réussie vers la $remoteVersion ! Le script va redémarrer.", "OK", "OK", "Information")
+                return
+            }
+            
+            # 2. Demande de confirmation à l'utilisateur
+            $dialogResult = [System.Windows.Forms.MessageBox]::Show(
+                "Une nouvelle version ($remoteVersion) est disponible !`n`nCette mise à jour téléchargera le script principal ainsi que tous les modules et assets.`n`nVoulez-vous effectuer la mise à jour maintenant ?", 
+                "Mise à jour disponible ($remoteVersion)", 
+                "YesNo", 
+                "Information"
+            )
+            
+            if ($dialogResult -eq "Yes") {
+                # 3. Chemins temporaires pour le téléchargement
+                $tempZipPath    = Join-Path $env:TEMP "R2ChapInstall_update.zip"
+                $tempExtractDir = Join-Path $env:TEMP "R2ChapInstall_Extract"
+                
+                if (Test-Path $tempExtractDir) { Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue }
+                
+                # Téléchargement de l'archive complète ZIP
+                Invoke-WebRequest -Uri $zipUrl -OutFile $tempZipPath -UseBasicParsing -ErrorAction Stop
+                
+                # Extraction du ZIP
+                Expand-Archive -Path $tempZipPath -DestinationPath $tempExtractDir -Force
+                
+                # GitHub crée un dossier racine "R2CHAPINSTALL-main" dans le zip
+                $extractedRoot = Join-Path $tempExtractDir "R2CHAPINSTALL-main"
+                
+                if (Test-Path $extractedRoot) {
+                    # Copie et écrasement des fichiers et dossiers (R2ChapInstall.ps1, modules, assets, etc.)
+                    Copy-Item -Path "$extractedRoot\*" -Destination $ScriptDir -Recurse -Force
+                    
+                    # Nettoyage des fichiers temporaires
+                    Remove-Item -Path $tempZipPath -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+                    
+                    # 4. Notification et Redémarrage automatique en Admin
+                    [System.Windows.Forms.MessageBox]::Show(
+                        "Mise à jour réussie vers la version $remoteVersion !`n`nL'application va maintenant redémarrer.", 
+                        "Mise à jour terminée", 
+                        "OK", 
+                        "Information"
+                    )
+                    
                     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
                     $form.Close()
                     return
+                } else {
+                    throw "Le dossier extrait est introuvable."
                 }
-            } else {
-                [System.Windows.Forms.MessageBox]::Show("Vous possédez déjà la version la plus récente ($ScriptVersion).", "À jour", "OK", "Information")
             }
+        } else {
+            throw "Impossible de lire le numéro de version sur le dépôt distant."
         }
-        Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
     } catch {
-        [System.Windows.Forms.MessageBox]::Show("Impossible de vérifier les mises à jour : $_", "Erreur réseau", "OK", "Error")
+        [System.Windows.Forms.MessageBox]::Show(
+            "Une erreur est survenue lors de la mise à jour :`n$_", 
+            "Erreur de mise à jour", 
+            "OK", 
+            "Error"
+        )
     }
-}
-
-function Open-SettingsDialog {
-    [System.Windows.Forms.MessageBox]::Show(
-        "Fenêtre des paramètres de l'application R2Chap Install.`n(Vous pourrez y ajouter la configuration des dossiers, clés d'API ou préférences).", 
-        "Paramètres", 
-        "OK", 
-        "Information"
-    )
 }
 
 function Start-TotalConversion {
@@ -124,7 +164,7 @@ function Start-TotalConversion {
 # ------------------------------------------
 # 2. APPLICATION & FENÊTRE PRINCIPALE
 # ------------------------------------------
-$bgColor        = [System.Drawing.ColorTranslator]::FromHtml("#85BBFF")
+$bgColor       = [System.Drawing.ColorTranslator]::FromHtml("#85BBFF")
 $headerBgColor = [System.Drawing.ColorTranslator]::FromHtml("#6CA8F7")
 $activeTabBg   = [System.Drawing.Color]::White
 $inactiveTabBg = [System.Drawing.ColorTranslator]::FromHtml("#A2CDFF")
@@ -174,7 +214,7 @@ $headerPanel.Controls.Add($lblSubTitle)
 
 $toolTip = New-Object System.Windows.Forms.ToolTip
 
-# Boutons d'en-tête
+# Bouton d'en-tête (Mise à jour)
 $btnUpdateIcon = New-Object System.Windows.Forms.Button
 $btnUpdateIcon.Location = New-Object System.Drawing.Point(825, 13)
 $btnUpdateIcon.Size = New-Object System.Drawing.Size(44, 44)
@@ -194,26 +234,6 @@ if ($imgUpdate) {
 $toolTip.SetToolTip($btnUpdateIcon, "Mise à jour du programme R2Chap Install")
 $btnUpdateIcon.Add_Click({ Check-AppUpdate })
 $headerPanel.Controls.Add($btnUpdateIcon)
-
-$btnSettingsIcon = New-Object System.Windows.Forms.Button
-$btnSettingsIcon.Location = New-Object System.Drawing.Point(770, 13)
-$btnSettingsIcon.Size = New-Object System.Drawing.Size(44, 44)
-$btnSettingsIcon.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnSettingsIcon.FlatAppearance.BorderSize = 0
-$btnSettingsIcon.BackColor = [System.Drawing.Color]::Transparent
-$btnSettingsIcon.Cursor = [System.Windows.Forms.Cursors]::Hand
-
-$imgSettings = Get-ResizedImage -filePath $imgSettingsPath -width 32 -height 32
-if ($imgSettings) {
-    $btnSettingsIcon.Image = $imgSettings
-    $btnSettingsIcon.ImageAlign = "MiddleCenter"
-} else {
-    $btnSettingsIcon.Text = "⚙️"
-    $btnSettingsIcon.Font = New-Object System.Drawing.Font("Segoe UI", 14)
-}
-$toolTip.SetToolTip($btnSettingsIcon, "Paramètres de l'application")
-$btnSettingsIcon.Add_Click({ Open-SettingsDialog })
-$headerPanel.Controls.Add($btnSettingsIcon)
 
 # ------------------------------------------
 # 3. GESTIONNAIRE D'ONGLETS
@@ -292,7 +312,7 @@ $tabMajWindows   = Add-CustomTab "Màj Windows"
 # Helper d'erreur en cas de module manquant
 function Show-ModuleMissingLabel ($targetTab, $moduleName) {
     $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = "⚠ Erreur : Le module $moduleName n'a pas pou être chargé."
+    $lbl.Text = "⚠ Erreur : Le module $moduleName n'a pas pu être chargé."
     $lbl.ForeColor = [System.Drawing.Color]::Red
     $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $lbl.Location = New-Object System.Drawing.Point(20, 20)
