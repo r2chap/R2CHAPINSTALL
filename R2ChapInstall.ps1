@@ -6,7 +6,7 @@
 
 $ScriptVersion = "v1.9"
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8-BOM
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Élévation de privilèges Admin automatique
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
