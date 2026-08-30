@@ -1,6 +1,7 @@
 ﻿# ==========================================
 # MODULE : CUSTOMIZATION (Personnalisation & Multimédia)
 # Fichier : modules/Customization.ps1
+# Version : v1.9
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -17,24 +18,6 @@ public class Wallpaper {
 "@
 if (-not ([System.Management.Automation.PSTypeName]'Wallpaper').Type) {
     Add-Type -TypeDefinition $WallpaperAPI
-}
-
-# ------------------------------------------
-# HELPER : LOGGING
-# ------------------------------------------
-function Write-CustomLog {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [string]$Message,
-        [System.Drawing.Color]$Color
-    )
-    if ($LogBox -and -not $LogBox.IsDisposed) {
-        $LogBox.SelectionStart = $LogBox.TextLength
-        $LogBox.SelectionLength = 0
-        $LogBox.SelectionColor = $Color
-        $LogBox.AppendText("[$([DateTime]::Now.ToString('HH:mm:ss'))] $Message`n")
-        $LogBox.ScrollToCaret()
-    }
 }
 
 # ------------------------------------------
@@ -84,8 +67,7 @@ function Get-R2ChapBasePath {
 
 function Get-LocalAssetFile {
     param(
-        [string]$FileName,
-        [System.Windows.Forms.RichTextBox]$LogBox
+        [string]$FileName
     )
     
     $localFolder = "C:\r2chap"
@@ -105,14 +87,14 @@ function Get-LocalAssetFile {
     if (Test-Path $assetPath) {
         try {
             Copy-Item -Path $assetPath -Destination $localPath -Force
-            Write-CustomLog -LogBox $LogBox -Message " Asset copié depuis USB vers : $localPath" -Color ([System.Drawing.Color]::Gray)
+            Write-Log -Message "Asset copié depuis USB vers : $localPath" -Color ([System.Drawing.Color]::Gray)
             return $localPath
         } catch {
-            Write-CustomLog -LogBox $LogBox -Message " ERREUR de copie de $FileName depuis USB : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+            Write-Log -Message "ERREUR de copie de $FileName depuis USB : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
             return $null
         }
     } else {
-        Write-CustomLog -LogBox $LogBox -Message " ERREUR : Fichier '$FileName' introuvable dans C:\r2chap et Assets USB ($assetPath)." -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR : Fichier '$FileName' introuvable dans C:\r2chap et Assets USB ($assetPath)." -Color ([System.Drawing.Color]::Red)
         return $null
     }
 }
@@ -124,53 +106,37 @@ $script:InvokeWingetInstallBlock = {
     param(
         [string]$AppName,
         [string]$AppId,
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [System.Windows.Forms.ProgressBar]$ProgressBar,
         [System.Windows.Forms.Form]$ParentForm
     )
 
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR : L'outil 'winget' n'est pas disponible sur ce système." -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR : L'outil 'winget' n'est pas disponible sur ce système." -Color ([System.Drawing.Color]::Red)
         return
     }
 
-    if ($ProgressBar) { 
-        $ProgressBar.Value = 0
-        $ProgressBar.Maximum = 2
-    }
-
-    # Recherche si l'ID n'est pas fourni (ex: Romstation)
     $targetId = $AppId
     if ([string]::IsNullOrWhiteSpace($targetId)) {
-        Write-CustomLog -LogBox $LogBox -Message "Recherche du paquet '$AppName' dans WinGet..." -Color ([System.Drawing.Color]::Blue)
+        Write-Log -Message "Recherche du paquet '$AppName' dans WinGet..." -Color ([System.Drawing.Color]::Cyan)
         if ($ParentForm) { $ParentForm.Refresh() }
 
         $searchProc = Start-Process -FilePath "winget" -ArgumentList "search `"$AppName`" --accept-source-agreements" -NoNewWindow -PassThru -Wait
-        
-        # Si la recherche ne retourne rien de probant, on tente avec le nom brut
         $targetId = $AppName
     }
 
-    if ($ProgressBar) { $ProgressBar.Value = 1 }
-
-    Write-CustomLog -LogBox $LogBox -Message "Installation de $AppName [$targetId]..." -Color ([System.Drawing.Color]::DarkSlateGray)
+    Write-Log -Message "Installation de $AppName [$targetId]..." -Color ([System.Drawing.Color]::Yellow)
     if ($ParentForm) { $ParentForm.Refresh() }
 
-    # Exécution silencieuse standard conforme à Software.ps1
     $process = Start-Process -FilePath "winget" -ArgumentList "install --id `"$targetId`" -s winget -e --silent --accept-package-agreements --accept-source-agreements" -NoNewWindow -PassThru -Wait
 
     $exitCode = $process.ExitCode
     $statusMessage = Get-WingetErrorMessage -Code $exitCode
 
     if ($exitCode -eq 0 -or $exitCode -eq -1978335189) {
-        Write-CustomLog -LogBox $LogBox -Message "SUCCÈS : $AppName -> $statusMessage" -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : $AppName -> $statusMessage" -Color ([System.Drawing.Color]::ForestGreen)
     } else {
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR : $AppName -> $statusMessage" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR : $AppName -> $statusMessage" -Color ([System.Drawing.Color]::Red)
     }
 
-    if ($ProgressBar) { 
-        $ProgressBar.Value = 2 
-    }
     if ($ParentForm) { $ParentForm.Refresh() }
 }
 
@@ -180,12 +146,10 @@ $script:InvokeWingetInstallBlock = {
 
 # 1. RACCOURCI WEB SUR LE BUREAU
 function Set-DesktopShortcut {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "ACTION : Création du raccourci Web sur le bureau..." -Color ([System.Drawing.Color]::Cyan)
 
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-CustomLog -LogBox $LogBox -Message "ACTION : Création du raccourci Web sur le bureau..." -Color ([System.Drawing.Color]::Blue)
-
-    $iconPath = Get-LocalAssetFile -FileName "Logo.ico" -LogBox $LogBox
+    $iconPath = Get-LocalAssetFile -FileName "Logo.ico"
     $desktopPath = [Environment]::GetFolderPath("Desktop")
     $shortcutPath = Join-Path $desktopPath "R2CHAP.url"
 
@@ -202,23 +166,21 @@ URL=https://r2chap.be
         }
 
         Set-Content -Path $shortcutPath -Value $content -Encoding ASCII -Force
-        Write-CustomLog -LogBox $LogBox -Message "SUCCÈS : Raccourci vers https://r2chap.be créé sur le bureau." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Raccourci vers https://r2chap.be créé sur le bureau." -Color ([System.Drawing.Color]::ForestGreen)
     } catch {
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR lors de la création du raccourci : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR lors de la création du raccourci : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
 # 2. APPLICATION DU FOND D'ÉCRAN
 function Set-DesktopWallpaper {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "ACTION : Modification du fond d'écran..." -Color ([System.Drawing.Color]::Cyan)
 
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-CustomLog -LogBox $LogBox -Message "ACTION : Modification du fond d'écran..." -Color ([System.Drawing.Color]::Blue)
-
-    $wallpaperPath = Get-LocalAssetFile -FileName "wallpaper.png" -LogBox $LogBox
+    $wallpaperPath = Get-LocalAssetFile -FileName "wallpaper.png"
 
     if (-not $wallpaperPath -or -not (Test-Path $wallpaperPath)) {
-        Write-CustomLog -LogBox $LogBox -Message "ÉCHEC : Impossible d'appliquer le fond d'écran (fichier introuvable)." -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ÉCHEC : Impossible d'appliquer le fond d'écran (fichier introuvable)." -Color ([System.Drawing.Color]::Red)
         return
     }
 
@@ -229,23 +191,21 @@ function Set-DesktopWallpaper {
 
         [Wallpaper]::SystemParametersInfo(0x0014, 0, $wallpaperPath, 0x01 -bor 0x02) | Out-Null
         
-        Write-CustomLog -LogBox $LogBox -Message "SUCCÈS : Fond d'écran appliqué avec succès." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Fond d'écran appliqué avec succès." -Color ([System.Drawing.Color]::ForestGreen)
     } catch {
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR lors du changement de fond d'écran : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR lors du changement de fond d'écran : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
 # 3. MODIFICATION DE L'AVATAR UTILISATEUR
 function Set-UserAvatar {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "ACTION : Modification de la photo de profil utilisateur..." -Color ([System.Drawing.Color]::Cyan)
 
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-CustomLog -LogBox $LogBox -Message "ACTION : Modification de la photo de profil utilisateur..." -Color ([System.Drawing.Color]::Blue)
-
-    $avatarPath = Get-LocalAssetFile -FileName "user_avatar.png" -LogBox $LogBox
+    $avatarPath = Get-LocalAssetFile -FileName "user_avatar.png"
 
     if (-not $avatarPath -or -not (Test-Path $avatarPath)) {
-        Write-CustomLog -LogBox $LogBox -Message "ÉCHEC : Impossible de modifier l'avatar (fichier introuvable)." -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ÉCHEC : Impossible de modifier l'avatar (fichier introuvable)." -Color ([System.Drawing.Color]::Red)
         return
     }
 
@@ -264,18 +224,16 @@ function Set-UserAvatar {
         Set-ItemProperty -Path $regPath -Name "Image240" -Value $avatarPath -ErrorAction SilentlyContinue
         Set-ItemProperty -Path $regPath -Name "Image448" -Value $avatarPath -ErrorAction SilentlyContinue
 
-        Write-CustomLog -LogBox $LogBox -Message "SUCCÈS : Photo de profil définie sur $avatarPath." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Photo de profil définie sur $avatarPath." -Color ([System.Drawing.Color]::ForestGreen)
     } catch {
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR lors du changement d'avatar : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR lors du changement d'avatar : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
 # 4. CONFIGURATION DU THÈME ET COULEURS WINDOWS
 function Set-WindowsThemeAndColors {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
-
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-CustomLog -LogBox $LogBox -Message "ACTION : Application du thème et des couleurs d'accentuation..." -Color ([System.Drawing.Color]::Blue)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "ACTION : Application du thème et des couleurs d'accentuation..." -Color ([System.Drawing.Color]::Cyan)
 
     try {
         $personalizePath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
@@ -293,21 +251,18 @@ function Set-WindowsThemeAndColors {
         Set-ItemProperty -Path $personalizePath -Name "ColorPrevalence" -Value 1 -Force
         Set-ItemProperty -Path $dwmPath -Name "AccentColorMenu" -Value 1 -ErrorAction SilentlyContinue
 
-        Write-CustomLog -LogBox $LogBox -Message "SUCCÈS : Thème Sombre/Clair & Couleurs d'accentuation configurés." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Thème Sombre/Clair & Couleurs d'accentuation configurés." -Color ([System.Drawing.Color]::ForestGreen)
     } catch {
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR lors de la configuration du thème : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR lors de la configuration du thème : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
-# 5. CONFIGURATION DU DNS VERS OPENDNS (APPLICATION SUR TOUTES LES CARTES PHYSIQUES)
+# 5. CONFIGURATION DU DNS VERS OPENDNS
 function Set-OpenDNSConfig {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
-
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-CustomLog -LogBox $LogBox -Message "ACTION : Configuration d'OpenDNS sur toutes les cartes réseau physiques..." -Color ([System.Drawing.Color]::Blue)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "ACTION : Configuration d'OpenDNS sur toutes les cartes réseau physiques..." -Color ([System.Drawing.Color]::Cyan)
 
     try {
-        # Détection de TOUTES les cartes physiques (Ethernet et Wi-Fi) en excluant les cartes virtuelles
         $adapters = Get-NetAdapter -ErrorAction Stop | Where-Object { 
             $_.HardwareInterface -eq $true -and 
             $_.Name -notmatch "Virtual|VMware|vEthernet|Loopback|WSL|Bluetooth" -and
@@ -315,7 +270,7 @@ function Set-OpenDNSConfig {
         }
 
         if (-not $adapters -or $adapters.Count -eq 0) {
-            Write-CustomLog -LogBox $LogBox -Message "ERREUR : Aucune carte réseau physique (Ethernet/Wi-Fi) n'a été trouvée." -Color ([System.Drawing.Color]::Red)
+            Write-Log -Message "ERREUR : Aucune carte réseau physique (Ethernet/Wi-Fi) n'a été trouvée." -Color ([System.Drawing.Color]::Red)
             [System.Windows.Forms.MessageBox]::Show("Aucune carte réseau physique n'a été détectée.", "Erreur Réseau", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
             return
         }
@@ -324,20 +279,17 @@ function Set-OpenDNSConfig {
 
         foreach ($adapter in $adapters) {
             $adapterName = $adapter.Name
-            Write-CustomLog -LogBox $LogBox -Message " Traitement de l'interface : $adapterName ($($adapter.InterfaceDescription))" -Color ([System.Drawing.Color]::DarkSlateGray)
+            Write-Log -Message " Traitement de l'interface : $adapterName ($($adapter.InterfaceDescription))" -Color ([System.Drawing.Color]::White)
 
-            # 1. Reset et attribution via cmdlet PowerShell
             Set-DnsClientServerAddress -InterfaceAlias $adapterName -ResetServerAddresses -ErrorAction SilentlyContinue
             Set-DnsClientServerAddress -InterfaceAlias $adapterName -ServerAddresses ("208.67.222.222", "208.67.220.220") -ErrorAction SilentlyContinue
 
-            # 2. Force l'attribution statique via Netsh (Met à jour l'interface Windows 11)
             $cmdPrimary = "interface ipv4 set dns name=`"$adapterName`" static 208.67.222.222 primary"
             $cmdSecondary = "interface ipv4 add dns name=`"$adapterName`" 208.67.220.220 index=2"
 
             Start-Process netsh -ArgumentList $cmdPrimary -NoNewWindow -Wait
             Start-Process netsh -ArgumentList $cmdSecondary -NoNewWindow -Wait
 
-            # 3. Redémarrage de la carte uniquement si elle est connectée pour rafraîchir Windows
             if ($adapter.Status -eq 'Up') {
                 Restart-NetAdapter -Name $adapterName -Confirm:$false -ErrorAction SilentlyContinue
             }
@@ -345,13 +297,11 @@ function Set-OpenDNSConfig {
             $modifiedAdapters += $adapterName
         }
 
-        # 4. Vidage du cache DNS général
         Clear-DnsClientCache -ErrorAction SilentlyContinue
 
         $listStr = $modifiedAdapters -join ", "
-        Write-CustomLog -LogBox $LogBox -Message "SUCCÈS : OpenDNS configuré sur : $listStr" -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : OpenDNS configuré sur : $listStr" -Color ([System.Drawing.Color]::ForestGreen)
 
-        # 5. Boîte de dialogue Pop-Up d'information
         $msgText = "Les serveurs OpenDNS ont été appliqués avec succès sur les cartes physiques :`n" +
                    "• $($modifiedAdapters -join "`n• ")" + "`n`n" +
                    "Serveurs DNS appliqués :`n" +
@@ -362,26 +312,23 @@ function Set-OpenDNSConfig {
 
     } catch {
         $errorDetails = $_.Exception.Message
-        Write-CustomLog -LogBox $LogBox -Message "ERREUR lors de la configuration DNS : $errorDetails" -Color ([System.Drawing.Color]::Red)
-        
+        Write-Log -Message "ERREUR lors de la configuration DNS : $errorDetails" -Color ([System.Drawing.Color]::Red)
         [System.Windows.Forms.MessageBox]::Show("Impossible de modifier les DNS.`nAssurez-vous d'avoir exécuté l'application en tant qu'Administrateur.`n`nDétails : $errorDetails", "Erreur Droits d'accès", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
     }
 }
 
 # 6. EXÉCUTION GLOBALE
 function Start-AllCustomizations {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "LANCEMENT DE LA PERSONNALISATION COMPLÈTE..." -Color ([System.Drawing.Color]::Cyan)
 
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-CustomLog -LogBox $LogBox -Message "LANCEMENT DE LA PERSONNALISATION COMPLÈTE..." -Color ([System.Drawing.Color]::Blue)
+    Set-DesktopShortcut
+    Set-DesktopWallpaper
+    Set-UserAvatar
+    Set-WindowsThemeAndColors
 
-    Set-DesktopShortcut -LogBox $LogBox
-    Set-DesktopWallpaper -LogBox $LogBox
-    Set-UserAvatar -LogBox $LogBox
-    Set-WindowsThemeAndColors -LogBox $LogBox
-
-    Write-CustomLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::ForestGreen)
-    Write-CustomLog -LogBox $LogBox -Message "TOUTES LES PERSONNALISATIONS SONT TERMINÉES !" -Color ([System.Drawing.Color]::ForestGreen)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::ForestGreen)
+    Write-Log -Message "TOUTES LES PERSONNALISATIONS SONT TERMINÉES !" -Color ([System.Drawing.Color]::ForestGreen)
 }
 
 # ------------------------------------------
@@ -396,22 +343,6 @@ function Build-TabCustomization {
 
     $emojiFontBtn = New-Object System.Drawing.Font("Segoe UI Emoji", 8.5, [System.Drawing.FontStyle]::Bold)
     $emojiFontCard = New-Object System.Drawing.Font("Segoe UI Emoji", 13)
-
-    # Console Log
-    $logBox = New-Object System.Windows.Forms.RichTextBox
-    $logBox.Location = New-Object System.Drawing.Point(10, 310)
-    $logBox.Size = New-Object System.Drawing.Size(840, 115)
-    $logBox.BackColor = [System.Drawing.Color]::White
-    $logBox.ReadOnly = $true
-    $logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5, [System.Drawing.FontStyle]::Regular)
-    $TargetTab.Controls.Add($logBox)
-
-    # Barre de progression (alignée avec Software.ps1)
-    $progressBar = New-Object System.Windows.Forms.ProgressBar
-    $progressBar.Location = New-Object System.Drawing.Point(10, 435)
-    $progressBar.Size = New-Object System.Drawing.Size(840, 20)
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-    $TargetTab.Controls.Add($progressBar)
 
     # --------------------------------------------------
     # PANNEAU HAUT GAUCHE : Personnalisation R2CHAP
@@ -432,7 +363,7 @@ function Build-TabCustomization {
     $btnAll.ForeColor = [System.Drawing.Color]::White
     $btnAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnAll.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnAll.Add_Click({ Start-AllCustomizations -LogBox $logBox })
+    $btnAll.Add_Click({ Start-AllCustomizations })
     $groupLeft.Controls.Add($btnAll)
 
     $btnWeb = New-Object System.Windows.Forms.Button
@@ -444,7 +375,7 @@ function Build-TabCustomization {
     $btnWeb.ForeColor = [System.Drawing.Color]::White
     $btnWeb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnWeb.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnWeb.Add_Click({ Set-DesktopShortcut -LogBox $logBox })
+    $btnWeb.Add_Click({ Set-DesktopShortcut })
     $groupLeft.Controls.Add($btnWeb)
 
     # --------------------------------------------------
@@ -466,12 +397,9 @@ function Build-TabCustomization {
     $btnDNS.ForeColor = [System.Drawing.Color]::White
     $btnDNS.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnDNS.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnDNS.Add_Click({ Set-OpenDNSConfig -LogBox $logBox })
+    $btnDNS.Add_Click({ Set-OpenDNSConfig })
     $groupRight.Controls.Add($btnDNS)
 
-    # Variables partagées pour les clics
-    $pBar = $progressBar
-    $lBox = $logBox
     $pForm = $ParentForm
     $wingetInstallBlock = $script:InvokeWingetInstallBlock
 
@@ -486,7 +414,7 @@ function Build-TabCustomization {
     $btnKodi.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnKodi.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnKodi.Add_Click({
-        & $wingetInstallBlock -AppName "Kodi" -AppId "XBMCFoundation.Kodi" -LogBox $lBox -ProgressBar $pBar -ParentForm $pForm
+        & $wingetInstallBlock -AppName "Kodi" -AppId "XBMCFoundation.Kodi" -ParentForm $pForm
     }.GetNewClosure())
     $groupRight.Controls.Add($btnKodi)
 
@@ -501,7 +429,7 @@ function Build-TabCustomization {
     $btnRomstation.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnRomstation.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnRomstation.Add_Click({
-        & $wingetInstallBlock -AppName "Romstation" -AppId "" -LogBox $lBox -ProgressBar $pBar -ParentForm $pForm
+        & $wingetInstallBlock -AppName "Romstation" -AppId "" -ParentForm $pForm
     }.GetNewClosure())
     $groupRight.Controls.Add($btnRomstation)
 
@@ -511,20 +439,20 @@ function Build-TabCustomization {
     $lblCards = New-Object System.Windows.Forms.Label
     $lblCards.Text = "Paramètres système & visuels :"
     $lblCards.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $lblCards.Location = New-Object System.Drawing.Point(10, 112)
+    $lblCards.Location = New-Object System.Drawing.Point(10, 115)
     $lblCards.Size = New-Object System.Drawing.Size(350, 20)
     $TargetTab.Controls.Add($lblCards)
 
     $cardsPanel = New-Object System.Windows.Forms.Panel
-    $cardsPanel.Location = New-Object System.Drawing.Point(10, 135)
-    $cardsPanel.Size = New-Object System.Drawing.Size(840, 165)
+    $cardsPanel.Location = New-Object System.Drawing.Point(10, 140)
+    $cardsPanel.Size = New-Object System.Drawing.Size(840, 190)
     $cardsPanel.AutoScroll = $true
     $TargetTab.Controls.Add($cardsPanel)
 
     $customList = @(
-        @{ Title = "Fond d'écran"; Subtitle = "Applique wallpaper.png (Local/USB)"; Icon = "🖼️"; Action = { Set-DesktopWallpaper -LogBox $logBox } },
-        @{ Title = "Avatar Utilisateur"; Subtitle = "Applique user_avatar.png"; Icon = "👤"; Action = { Set-UserAvatar -LogBox $logBox } },
-        @{ Title = "Thèmes & Couleurs"; Subtitle = "Windows Sombre / Fenêtres Claires"; Icon = "🎨"; Action = { Set-WindowsThemeAndColors -LogBox $logBox } }
+        @{ Title = "Fond d'écran"; Subtitle = "Applique wallpaper.png (Local/USB)"; Icon = "🖼️"; Action = { Set-DesktopWallpaper } },
+        @{ Title = "Avatar Utilisateur"; Subtitle = "Applique user_avatar.png"; Icon = "👤"; Action = { Set-UserAvatar } },
+        @{ Title = "Thèmes & Couleurs"; Subtitle = "Windows Sombre / Fenêtres Claires"; Icon = "🎨"; Action = { Set-WindowsThemeAndColors } }
     )
 
     $colCount = 3
@@ -579,4 +507,14 @@ function Build-TabCustomization {
 
         $cardsPanel.Controls.Add($card)
     }
+}
+
+# Alias de fonction pour la compatibilité avec R2ChapInstall.ps1
+function Build-TabCustomR2chap {
+    param(
+        [System.Windows.Forms.TabPage]$TargetTab,
+        [System.Windows.Forms.Form]$ParentForm,
+        [System.Drawing.Color]$BgColor
+    )
+    Build-TabCustomization -TargetTab $TargetTab -ParentForm $ParentForm -BgColor $BgColor
 }

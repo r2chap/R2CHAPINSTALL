@@ -1,28 +1,11 @@
 ﻿# ==========================================
 # MODULE : WINDOWS UPDATE (Mises à jour Windows)
 # Fichier : modules/WindowsUpdate.ps1
+# Version : v1.9
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-
-# ------------------------------------------
-# HELPER : LOGGING
-# ------------------------------------------
-function Write-UpdateLog {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [string]$Message,
-        [System.Drawing.Color]$Color
-    )
-    if ($LogBox -and -not $LogBox.IsDisposed) {
-        $LogBox.SelectionStart = $LogBox.TextLength
-        $LogBox.SelectionLength = 0
-        $LogBox.SelectionColor = $Color
-        $LogBox.AppendText("[$([DateTime]::Now.ToString('HH:mm:ss'))] $Message`n")
-        $LogBox.ScrollToCaret()
-    }
-}
 
 # ------------------------------------------
 # FONCTION 1 : OUVRIR L'INTERFACE WINDOWS UPDATE
@@ -40,15 +23,12 @@ function Open-WindowsUpdateGUI {
 # ------------------------------------------
 function Start-WindowsUpdateProcess {
     param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [System.Windows.Forms.ProgressBar]$ProgressBar,
         [System.Windows.Forms.Form]$ParentForm
     )
 
-    Write-UpdateLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-UpdateLog -LogBox $LogBox -Message "ACTION : Recherche des mises à jour Windows disponibles..." -Color ([System.Drawing.Color]::Blue)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "ACTION : Recherche des mises à jour Windows disponibles..." -Color ([System.Drawing.Color]::Cyan)
     
-    if ($ProgressBar) { $ProgressBar.Value = 10 }
     if ($ParentForm) { $ParentForm.Refresh() }
 
     try {
@@ -61,8 +41,7 @@ function Start-WindowsUpdateProcess {
         $updatesToDownload = New-Object -ComObject Microsoft.Update.UpdateColl
 
         if ($searchResult.Updates.Count -eq 0) {
-            if ($ProgressBar) { $ProgressBar.Value = 100 }
-            Write-UpdateLog -LogBox $LogBox -Message "SUCCÈS : Votre système est déjà à jour. Aucune mise à jour disponible." -Color ([System.Drawing.Color]::ForestGreen)
+            Write-Log -Message "SUCCÈS : Votre système est déjà à jour. Aucune mise à jour disponible." -Color ([System.Drawing.Color]::ForestGreen)
             [System.Windows.Forms.MessageBox]::Show("Votre système est entièrement à jour !`nAucune mise à jour n'est disponible pour le moment.", "Windows Update", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
             return
         }
@@ -81,29 +60,26 @@ function Start-WindowsUpdateProcess {
         $dialogResult = [System.Windows.Forms.MessageBox]::Show($msgPrompt, "Mises à jour disponibles", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
 
         if ($dialogResult -ne [System.Windows.Forms.DialogResult]::Yes) {
-            Write-UpdateLog -LogBox $LogBox -Message "ANNULATION : Installation annulée par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
-            if ($ProgressBar) { $ProgressBar.Value = 0 }
+            Write-Log -Message "ANNULATION : Installation annulée par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
             return
         }
 
         # ----------------------------------
         # ETAPE 1 : TÉLÉCHARGEMENT
         # ----------------------------------
-        Write-UpdateLog -LogBox $LogBox -Message "Téléchargement des $( $updatesToDownload.Count ) mises à jour en cours..." -Color ([System.Drawing.Color]::DarkSlateGray)
-        if ($ProgressBar) { $ProgressBar.Value = 30 }
+        Write-Log -Message "Téléchargement des $($updatesToDownload.Count) mises à jour en cours..." -Color ([System.Drawing.Color]::Yellow)
         if ($ParentForm) { $ParentForm.Refresh() }
 
         $downloader = $updateSession.CreateUpdateDownloader()
         $downloader.Updates = $updatesToDownload
         $downloader.Download()
 
-        Write-UpdateLog -LogBox $LogBox -Message "SUCCÈS : Téléchargement terminé avec succès." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Téléchargement terminé avec succès." -Color ([System.Drawing.Color]::ForestGreen)
 
         # ----------------------------------
         # ETAPE 2 : INSTALLATION
         # ----------------------------------
-        Write-UpdateLog -LogBox $LogBox -Message "Installation des mises à jour en cours (cela peut prendre plusieurs minutes)..." -Color ([System.Drawing.Color]::DarkSlateGray)
-        if ($ProgressBar) { $ProgressBar.Value = 60 }
+        Write-Log -Message "Installation des mises à jour en cours (cela peut prendre plusieurs minutes)..." -Color ([System.Drawing.Color]::Yellow)
         if ($ParentForm) { $ParentForm.Refresh() }
 
         $updatesToInstall = New-Object -ComObject Microsoft.Update.UpdateColl
@@ -117,15 +93,13 @@ function Start-WindowsUpdateProcess {
         $installer.Updates = $updatesToInstall
         $installResult = $installer.Install()
 
-        if ($ProgressBar) { $ProgressBar.Value = 100 }
-
         # Vérification si un redémarrage est requis
         $rebootRequired = $installResult.RebootRequired
 
-        Write-UpdateLog -LogBox $LogBox -Message "SUCCÈS : Installation des mises à jour terminée !" -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Installation des mises à jour terminée !" -Color ([System.Drawing.Color]::ForestGreen)
 
         if ($rebootRequired) {
-            Write-UpdateLog -LogBox $LogBox -Message "ATTENTION : Un redémarrage du PC est nécessaire pour finaliser l'installation." -Color ([System.Drawing.Color]::Orange)
+            Write-Log -Message "ATTENTION : Un redémarrage du PC est nécessaire pour finaliser l'installation." -Color ([System.Drawing.Color]::Orange)
             [System.Windows.Forms.MessageBox]::Show("Toutes les mises à jour ont été installées avec succès !`n`nUn redémarrage de votre PC est requis pour finaliser l'installation.", "Mise à jour terminée", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         } else {
             [System.Windows.Forms.MessageBox]::Show("Toutes les mises à jour ont été installées avec succès !", "Mise à jour terminée", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
@@ -133,7 +107,7 @@ function Start-WindowsUpdateProcess {
 
     } catch {
         $errorMsg = $_.Exception.Message
-        Write-UpdateLog -LogBox $LogBox -Message "ERREUR : Impossible de traiter les mises à jour : $errorMsg" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "ERREUR : Impossible de traiter les mises à jour : $errorMsg" -Color ([System.Drawing.Color]::Red)
         [System.Windows.Forms.MessageBox]::Show("Une erreur est survenue lors du processus Windows Update.`n`nDétails : $errorMsg", "Erreur Windows Update", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     }
 }
@@ -152,6 +126,7 @@ function Build-TabWindowsUpdate {
 
     $fontTitle = New-Object System.Drawing.Font("Consolas", 12, [System.Drawing.FontStyle]::Bold)
     $fontBtn   = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+    $fontText  = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
 
     # Titre de la section
     $lblTitle = New-Object System.Windows.Forms.Label
@@ -164,13 +139,14 @@ function Build-TabWindowsUpdate {
 
     # BOUTON 1 : Ouvrir les Paramètres Windows Update
     $btnOpenGUI = New-Object System.Windows.Forms.Button
-    $btnOpenGUI.Text = "Ouvrir Windows Update (Paramètres Windows)"
+    $btnOpenGUI.Text = "⚙️ Ouvrir Windows Update (Paramètres)"
     $btnOpenGUI.Font = $fontBtn
-    $btnOpenGUI.Size = New-Object System.Drawing.Size(320, 40)
+    $btnOpenGUI.Size = New-Object System.Drawing.Size(320, 42)
     $btnOpenGUI.Location = New-Object System.Drawing.Point(15, 55)
     $btnOpenGUI.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#21262D")
     $btnOpenGUI.ForeColor = [System.Drawing.Color]::White
     $btnOpenGUI.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnOpenGUI.FlatAppearance.BorderSize = 0
     $btnOpenGUI.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnOpenGUI.Add_Click({
         Open-WindowsUpdateGUI
@@ -179,39 +155,40 @@ function Build-TabWindowsUpdate {
 
     # BOUTON 2 : Lancer les mises à jour directement
     $btnStartUpdate = New-Object System.Windows.Forms.Button
-    $btnStartUpdate.Text = "Rechercher & Installer les Mises à Jour"
+    $btnStartUpdate.Text = "⚡ Rechercher & Installer les Mises à Jour"
     $btnStartUpdate.Font = $fontBtn
-    $btnStartUpdate.Size = New-Object System.Drawing.Size(320, 40)
+    $btnStartUpdate.Size = New-Object System.Drawing.Size(320, 42)
     $btnStartUpdate.Location = New-Object System.Drawing.Point(350, 55)
     $btnStartUpdate.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#1F6FEB")
     $btnStartUpdate.ForeColor = [System.Drawing.Color]::White
     $btnStartUpdate.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnStartUpdate.FlatAppearance.BorderSize = 0
     $btnStartUpdate.Cursor = [System.Windows.Forms.Cursors]::Hand
     $TargetTab.Controls.Add($btnStartUpdate)
 
-    # Console Log de suivi
-    $logBox = New-Object System.Windows.Forms.RichTextBox
-    $logBox.Location = New-Object System.Drawing.Point(15, 110)
-    $logBox.Size = New-Object System.Drawing.Size(830, 310)
-    $logBox.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#0D1117")
-    $logBox.ForeColor = [System.Drawing.Color]::White
-    $logBox.ReadOnly = $true
-    $logBox.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Regular)
-    $TargetTab.Controls.Add($logBox)
+    # Panneau d'information explicatif
+    $infoPanel = New-Object System.Windows.Forms.Panel
+    $infoPanel.Location = New-Object System.Drawing.Point(15, 115)
+    $infoPanel.Size = New-Object System.Drawing.Size(830, 200)
+    $infoPanel.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#0D1117")
+    $infoPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $TargetTab.Controls.Add($infoPanel)
 
-    # Barre de progression
-    $progressBar = New-Object System.Windows.Forms.ProgressBar
-    $progressBar.Location = New-Object System.Drawing.Point(15, 430)
-    $progressBar.Size = New-Object System.Drawing.Size(830, 20)
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-    $TargetTab.Controls.Add($progressBar)
+    $lblInfo = New-Object System.Windows.Forms.Label
+    $lblInfo.Text = "Informations sur le module Windows Update :`n`n" +
+                    "• Le bouton 'Ouvrir Windows Update' ouvre l'application Paramètres native de Windows.`n`n" +
+                    "• Le bouton 'Rechercher & Installer' utilise l'API Windows Update (COM) pour interroger directement le service, lister les mises à jour en attente et exécuter l'installation silencieuse.`n`n" +
+                    "• La progression et les journaux détaillés s'afficheront en temps réel dans la console principale située en bas de l'application."
+    $lblInfo.Font = $fontText
+    $lblInfo.ForeColor = [System.Drawing.Color]::LightGray
+    $lblInfo.Location = New-Object System.Drawing.Point(15, 15)
+    $lblInfo.Size = New-Object System.Drawing.Size(800, 170)
+    $infoPanel.Controls.Add($lblInfo)
 
     # Association de l'événement clic pour le bouton de recherche/installation
-    $lBox = $logBox
-    $pBar = $progressBar
     $pForm = $ParentForm
 
     $btnStartUpdate.Add_Click({
-        Start-WindowsUpdateProcess -LogBox $lBox -ProgressBar $pBar -ParentForm $pForm
+        Start-WindowsUpdateProcess -ParentForm $pForm
     })
 }

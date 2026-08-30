@@ -1,13 +1,12 @@
-# ==========================================
+﻿# ==========================================
 # R2CHAP INSTALL - Main GUI Launcher
-# Version : v1.0
+# Version : v1.9
 # Dépôt : https://github.com/r2chap/R2CHAPINSTALL
 # ==========================================
 
-$ScriptVersion = "v1.0"
-$UpdateUrl     = "https://raw.githubusercontent.com/r2chap/R2CHAPINSTALL/main/R2ChapInstall.ps1"
+$ScriptVersion = "v1.9"
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8-BOM
 
 # Élévation de privilèges Admin automatique
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -61,6 +60,42 @@ function Get-ResizedImage ($filePath, $width, $height) {
         }
     }
     return $null
+}
+
+# ------------------------------------------
+# FONCTION LOG GLOBALE (Thread-Safe)
+# ------------------------------------------
+function Write-Log {
+    param(
+        [string]$Message,
+        [System.Drawing.Color]$Color = ([System.Drawing.Color]::White)
+    )
+    $timestamp = Get-Date -Format 'HH:mm:ss'
+    $formattedMsg = "[$timestamp] $Message"
+
+    # Affichage Console PowerShell
+    Write-Host $formattedMsg -ForegroundColor White
+
+    # Affichage Zone de Texte GUI Globale
+    if ($global:MainLogBox -and -not $global:MainLogBox.IsDisposed) {
+        if ($global:MainLogBox.InvokeRequired) {
+            $global:MainLogBox.Invoke([Action[string, System.Drawing.Color]]{
+                param($m, $c)
+                $global:MainLogBox.SelectionStart = $global:MainLogBox.TextLength
+                $global:MainLogBox.SelectionLength = 0
+                $global:MainLogBox.SelectionColor = $c
+                $global:MainLogBox.AppendText("$m`n")
+                $global:MainLogBox.ScrollToCaret()
+            }, $formattedMsg, $Color)
+        } else {
+            $global:MainLogBox.SelectionStart = $global:MainLogBox.TextLength
+            $global:MainLogBox.SelectionLength = 0
+            $global:MainLogBox.SelectionColor = $Color
+            $global:MainLogBox.AppendText("$formattedMsg`n")
+            $global:MainLogBox.ScrollToCaret()
+        }
+        [System.Windows.Forms.Application]::DoEvents()
+    }
 }
 
 # ------------------------------------------
@@ -157,7 +192,7 @@ function Start-TotalConversion {
         "Warning"
     )
     if ($result -eq "Yes") {
-        [System.Windows.Forms.MessageBox]::Show("Lancement du processus...", "Total Conversion", "OK", "Information")
+        Write-Log -Message "Démarrage du processus de Total Conversion..." -Color ([System.Drawing.Color]::Cyan)
     }
 }
 
@@ -171,7 +206,7 @@ $inactiveTabBg = [System.Drawing.ColorTranslator]::FromHtml("#A2CDFF")
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "R2Chap Install - Windows Deployer $ScriptVersion"
-$form.Size = New-Object System.Drawing.Size(900, 670)
+$form.Size = New-Object System.Drawing.Size(900, 700)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $False
@@ -240,7 +275,7 @@ $headerPanel.Controls.Add($btnUpdateIcon)
 # ------------------------------------------
 $tabControl = New-Object System.Windows.Forms.TabControl
 $tabControl.Location = New-Object System.Drawing.Point(10, 80)
-$tabControl.Size = New-Object System.Drawing.Size(865, 495)
+$tabControl.Size = New-Object System.Drawing.Size(865, 380)
 $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
 $tabControl.SizeMode = [System.Windows.Forms.TabSizeMode]::Normal
 $tabControl.ItemSize = New-Object System.Drawing.Size(135, 30)
@@ -298,7 +333,7 @@ function Add-CustomTab ($title) {
     return $tab
 }
 
-# Création des 5 onglets restants
+# Création des onglets
 $tabProgramme    = Add-CustomTab "Programme"
 $tabDrivers      = Add-CustomTab "Drivers"
 $tabCustomR2chap = Add-CustomTab "Custom R2chap"
@@ -306,10 +341,24 @@ $tabTweaks       = Add-CustomTab "Tweaks"
 $tabMajWindows   = Add-CustomTab "Màj Windows"
 
 # ------------------------------------------
-# 4. CHARGEMENT DU CONTENU VIA MODULES
+# 4. CONSOLE DE LOGS GLOBALE (Unique pour toute l'application)
+# ------------------------------------------
+$global:MainLogBox = New-Object System.Windows.Forms.RichTextBox
+$global:MainLogBox.Location = New-Object System.Drawing.Point(10, 468)
+$global:MainLogBox.Size = New-Object System.Drawing.Size(865, 135)
+$global:MainLogBox.BackColor = [System.Drawing.Color]::Black
+$global:MainLogBox.ForeColor = [System.Drawing.Color]::White
+$global:MainLogBox.ReadOnly = $true
+$global:MainLogBox.Font = New-Object System.Drawing.Font("Consolas", 9.5, [System.Drawing.FontStyle]::Regular)
+$form.Controls.Add($global:MainLogBox)
+
+# Message d'accueil du log
+Write-Log -Message "R2Chap Install $ScriptVersion initialisé." -Color ([System.Drawing.Color]::LightGreen)
+
+# ------------------------------------------
+# 5. CHARGEMENT DU CONTENU VIA MODULES
 # ------------------------------------------
 
-# Helper d'erreur en cas de module manquant
 function Show-ModuleMissingLabel ($targetTab, $moduleName) {
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Text = "⚠ Erreur : Le module $moduleName n'a pas pu être chargé."
@@ -327,9 +376,9 @@ if (Get-Command "Build-TabProgramme" -ErrorAction SilentlyContinue) {
     Show-ModuleMissingLabel -targetTab $tabProgramme -moduleName "Software.ps1"
 }
 
-# 2. Module Drivers
+# 2. Module Drivers (✅ CORRIGÉ : Ajout du paramètre -GlobalLogBox)
 if (Get-Command "Build-TabDrivers" -ErrorAction SilentlyContinue) {
-    Build-TabDrivers -TargetTab $tabDrivers -ParentForm $form -BgColor $bgColor
+    Build-TabDrivers -TargetTab $tabDrivers -ParentForm $form -GlobalLogBox $global:MainLogBox -BgColor $bgColor
 } else {
     Show-ModuleMissingLabel -targetTab $tabDrivers -moduleName "Drivers.ps1"
 }
@@ -362,13 +411,13 @@ if (Get-Command "Build-TabMajWindows" -ErrorAction SilentlyContinue) {
 }
 
 # ------------------------------------------
-# 5. BOUTONS BAS DE FENÊTRE
+# 6. BOUTONS BAS DE FENÊTRE
 # ------------------------------------------
 $btnQuitter = New-Object System.Windows.Forms.Button
 $btnQuitter.Text = "Quitter"
 $btnQuitter.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
 $btnQuitter.Size = New-Object System.Drawing.Size(100, 35)
-$btnQuitter.Location = New-Object System.Drawing.Point(775, 585)
+$btnQuitter.Location = New-Object System.Drawing.Point(775, 612)
 $btnQuitter.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnQuitter.FlatAppearance.BorderSize = 0
 $btnQuitter.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FF0000")
@@ -381,7 +430,7 @@ $btnTotalConversion = New-Object System.Windows.Forms.Button
 $btnTotalConversion.Text = "Total conversion"
 $btnTotalConversion.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
 $btnTotalConversion.Size = New-Object System.Drawing.Size(140, 35)
-$btnTotalConversion.Location = New-Object System.Drawing.Point(625, 585)
+$btnTotalConversion.Location = New-Object System.Drawing.Point(625, 612)
 $btnTotalConversion.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnTotalConversion.FlatAppearance.BorderSize = 0
 $btnTotalConversion.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#B007B5")

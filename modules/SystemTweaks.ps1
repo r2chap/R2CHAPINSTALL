@@ -1,35 +1,18 @@
-# ==========================================
+﻿# ==========================================
 # MODULE : SYSTEM TWEAKS (Optimisations Windows)
 # Fichier : modules/SystemTweaks.ps1
 # Basé sur l'interface WinUtil (Chris Titus Tech)
+# Version : v1.9
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ------------------------------------------
-# HELPER : LOGGING
-# ------------------------------------------
-function Write-TweakLog {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [string]$Message,
-        [System.Drawing.Color]$Color
-    )
-    if ($LogBox -and -not $LogBox.IsDisposed) {
-        $LogBox.SelectionStart = $LogBox.TextLength
-        $LogBox.SelectionLength = 0
-        $LogBox.SelectionColor = $Color
-        $LogBox.AppendText("[$([DateTime]::Now.ToString('HH:mm:ss'))] $Message`n")
-        $LogBox.ScrollToCaret()
-    }
-}
-
-# ------------------------------------------
 # DÉFINITION DES OPTIMISATIONS (TWEAKS)
 # ------------------------------------------
 
-# 1. ESSENTIAL TWEAKS (Cases pré-cochées basées sur l'image 2)
+# 1. ESSENTIAL TWEAKS (Cases pré-cochées basées sur l'interface WinUtil)
 $script:EssentialTweaks = @(
     @{ ID = "ActivityHistory"; Label = "Activity History - Disable"; Checked = $true; Action = {
         Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed" -Value 0 -Force -ErrorAction SilentlyContinue
@@ -115,7 +98,7 @@ $script:AdvancedTweaks = @(
     @{ ID = "EdgeRemove"; Label = "Microsoft Edge - Remove"; Checked = $false; Action = {} }
 )
 
-# 3. CUSTOMIZE PREFERENCES (Interrupteurs / Toggle Switches de l'image 1)
+# 3. CUSTOMIZE PREFERENCES (Interrupteurs / Toggle Switches)
 $script:CustomizePreferences = @(
     @{ Label = "BSOD Verbose Mode"; State = $true },
     @{ Label = "Dark Theme for Windows"; State = $true },
@@ -147,8 +130,6 @@ $script:CustomizePreferences = @(
 function Invoke-SystemTweaksExecution {
     param(
         [array]$CheckBoxControls,
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [System.Windows.Forms.ProgressBar]$ProgressBar,
         [System.Windows.Forms.Form]$ParentForm
     )
 
@@ -159,36 +140,27 @@ function Invoke-SystemTweaksExecution {
         return
     }
 
-    Write-TweakLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Blue)
-    Write-TweakLog -LogBox $LogBox -Message "DÉBUT DE L'APPLICATION DES OPTIMISATIONS..." -Color ([System.Drawing.Color]::Blue)
-
-    if ($ProgressBar) {
-        $ProgressBar.Value = 0
-        $ProgressBar.Maximum = $selectedTweaks.Count
-    }
-
-    $currentIndex = 0
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "DÉBUT DE L'APPLICATION DES OPTIMISATIONS..." -Color ([System.Drawing.Color]::Cyan)
 
     foreach ($chk in $selectedTweaks) {
         $tweakData = $chk.Tag
-        $currentIndex++
 
-        Write-TweakLog -LogBox $LogBox -Message "Application : $($tweakData.Label)..." -Color ([System.Drawing.Color]::DarkSlateGray)
+        Write-Log -Message "Application : $($tweakData.Label)..." -Color ([System.Drawing.Color]::Yellow)
         if ($ParentForm) { $ParentForm.Refresh() }
 
         try {
             & $tweakData.Action
-            Write-TweakLog -LogBox $LogBox -Message "SUCCÈS : $($tweakData.Label)" -Color ([System.Drawing.Color]::ForestGreen)
+            Write-Log -Message "SUCCÈS : $($tweakData.Label)" -Color ([System.Drawing.Color]::ForestGreen)
         } catch {
-            Write-TweakLog -LogBox $LogBox -Message "ERREUR : $($tweakData.Label) -> $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+            Write-Log -Message "ERREUR : $($tweakData.Label) -> $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
         }
 
-        if ($ProgressBar) { $ProgressBar.Value = $currentIndex }
         if ($ParentForm) { $ParentForm.Refresh() }
     }
 
-    Write-TweakLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::ForestGreen)
-    Write-TweakLog -LogBox $LogBox -Message "TOUTES LES OPTIMISATIONS SÉLECTIONNÉES ONT ÉTÉ APPLIQUÉES !" -Color ([System.Drawing.Color]::ForestGreen)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::ForestGreen)
+    Write-Log -Message "TOUTES LES OPTIMISATIONS SÉLECTIONNÉES ONT ÉTÉ APPLIQUÉES !" -Color ([System.Drawing.Color]::ForestGreen)
 
     [System.Windows.Forms.MessageBox]::Show("Les optimisations système sélectionnées ont été appliquées avec succès.", "Optimisation Terminée", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
 }
@@ -203,7 +175,7 @@ function Build-TabSystemTweaks {
         [System.Drawing.Color]$BgColor
     )
 
-    $TargetTab.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#12181F") # Fond sombre type WinUtil
+    $TargetTab.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#12181F")
 
     $fontTitle = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
     $fontItem  = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Regular)
@@ -211,29 +183,42 @@ function Build-TabSystemTweaks {
 
     $allCheckBoxes = @()
 
-    # Console Log
-    $logBox = New-Object System.Windows.Forms.RichTextBox
-    $logBox.Location = New-Object System.Drawing.Point(10, 310)
-    $logBox.Size = New-Object System.Drawing.Size(840, 115)
-    $logBox.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#0D1117")
-    $logBox.ForeColor = [System.Drawing.Color]::White
-    $logBox.ReadOnly = $true
-    $logBox.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Regular)
-    $TargetTab.Controls.Add($logBox)
+    # --------------------------------------------------
+    # BOUTONS D'ACTION (Positionnés en haut)
+    # --------------------------------------------------
+    $btnRun = New-Object System.Windows.Forms.Button
+    $btnRun.Text = "⚡ Run Tweaks"
+    $btnRun.Font = $fontBtn
+    $btnRun.Size = New-Object System.Drawing.Size(180, 32)
+    $btnRun.Location = New-Object System.Drawing.Point(10, 10)
+    $btnRun.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#1F6FEB")
+    $btnRun.ForeColor = [System.Drawing.Color]::White
+    $btnRun.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnRun.FlatAppearance.BorderSize = 0
+    $btnRun.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $TargetTab.Controls.Add($btnRun)
 
-    # Barre de progression
-    $progressBar = New-Object System.Windows.Forms.ProgressBar
-    $progressBar.Location = New-Object System.Drawing.Point(10, 435)
-    $progressBar.Size = New-Object System.Drawing.Size(840, 20)
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-    $TargetTab.Controls.Add($progressBar)
+    $btnUndo = New-Object System.Windows.Forms.Button
+    $btnUndo.Text = "↩ Undo Selected Tweaks"
+    $btnUndo.Font = $fontBtn
+    $btnUndo.Size = New-Object System.Drawing.Size(180, 32)
+    $btnUndo.Location = New-Object System.Drawing.Point(200, 10)
+    $btnUndo.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#21262D")
+    $btnUndo.ForeColor = [System.Drawing.Color]::White
+    $btnUndo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnUndo.FlatAppearance.BorderSize = 0
+    $btnUndo.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnUndo.Add_Click({
+        Write-Log -Message "Annulation non configurée." -Color ([System.Drawing.Color]::Orange)
+    })
+    $TargetTab.Controls.Add($btnUndo)
 
     # --------------------------------------------------
     # COLONNE GAUCHE : ESSENTIAL & ADVANCED TWEAKS
     # --------------------------------------------------
     $panelLeft = New-Object System.Windows.Forms.Panel
-    $panelLeft.Location = New-Object System.Drawing.Point(10, 10)
-    $panelLeft.Size = New-Object System.Drawing.Size(430, 255)
+    $panelLeft.Location = New-Object System.Drawing.Point(10, 50)
+    $panelLeft.Size = New-Object System.Drawing.Size(430, 280)
     $panelLeft.AutoScroll = $true
     $TargetTab.Controls.Add($panelLeft)
 
@@ -290,8 +275,8 @@ function Build-TabSystemTweaks {
     # COLONNE DROITE : CUSTOMIZE PREFERENCES
     # --------------------------------------------------
     $panelRight = New-Object System.Windows.Forms.Panel
-    $panelRight.Location = New-Object System.Drawing.Point(450, 10)
-    $panelRight.Size = New-Object System.Drawing.Size(400, 255)
+    $panelRight.Location = New-Object System.Drawing.Point(450, 50)
+    $panelRight.Size = New-Object System.Drawing.Size(400, 280)
     $panelRight.AutoScroll = $true
     $TargetTab.Controls.Add($panelRight)
 
@@ -316,40 +301,11 @@ function Build-TabSystemTweaks {
         $posYRight += 20
     }
 
-    # --------------------------------------------------
-    # BOUTONS D'ACTION (RUN TWEAKS / UNDO)
-    # --------------------------------------------------
-    $btnRun = New-Object System.Windows.Forms.Button
-    $btnRun.Text = "Run Tweaks"
-    $btnRun.Font = $fontBtn
-    $btnRun.Size = New-Object System.Drawing.Size(180, 30)
-    $btnRun.Location = New-Object System.Drawing.Point(10, 272)
-    $btnRun.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#1F6FEB")
-    $btnRun.ForeColor = [System.Drawing.Color]::White
-    $btnRun.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btnRun.Cursor = [System.Windows.Forms.Cursors]::Hand
-    
+    # Binding Clic Run Tweaks
     $chkList = $allCheckBoxes
-    $lBox = $logBox
-    $pBar = $progressBar
     $pForm = $ParentForm
 
     $btnRun.Add_Click({
-        Invoke-SystemTweaksExecution -CheckBoxControls $chkList -LogBox $lBox -ProgressBar $pBar -ParentForm $pForm
+        Invoke-SystemTweaksExecution -CheckBoxControls $chkList -ParentForm $pForm
     })
-    $TargetTab.Controls.Add($btnRun)
-
-    $btnUndo = New-Object System.Windows.Forms.Button
-    $btnUndo.Text = "Undo Selected Tweaks"
-    $btnUndo.Font = $fontBtn
-    $btnUndo.Size = New-Object System.Drawing.Size(180, 30)
-    $btnUndo.Location = New-Object System.Drawing.Point(200, 272)
-    $btnUndo.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#21262D")
-    $btnUndo.ForeColor = [System.Drawing.Color]::White
-    $btnUndo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btnUndo.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnUndo.Add_Click({
-        Write-TweakLog -LogBox $lBox -Message "Annulation non configurée." -Color ([System.Drawing.Color]::Orange)
-    })
-    $TargetTab.Controls.Add($btnUndo)
 }

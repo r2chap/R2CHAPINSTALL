@@ -1,6 +1,7 @@
 ﻿# ==========================================
 # MODULE : DRIVERS (Pilotes Nomades & Diagnostic)
 # Fichier : modules/Drivers.ps1
+# Version : v1.9 (Aligné sur Write-Log Global)
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -8,22 +9,77 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName Microsoft.VisualBasic
 
 # ------------------------------------------
-# HELPER : LOGGING AVEC COULEURS
+# HELPER : EXECUTION ASYNCHRONE ET SECURISEE
 # ------------------------------------------
-function Write-DriverLog {
+function Invoke-ExecutableWithLog {
     param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [string]$Message,
-        [System.Drawing.Color]$Color
+        [string]$ExePath,
+        [string]$Arguments,
+        [System.Drawing.Color]$TextColor = ([System.Drawing.Color]::White)
     )
-    if ($LogBox -and -not $LogBox.IsDisposed) {
-        $LogBox.SelectionStart = $LogBox.TextLength
-        $LogBox.SelectionLength = 0
-        $LogBox.SelectionColor = $Color
-        $LogBox.AppendText("[$([DateTime]::Now.ToString('HH:mm:ss'))] $Message`n")
-        $LogBox.ScrollToCaret()
-        [System.Windows.Forms.Application]::DoEvents()
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $ExePath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+
+    # Redirection asynchrone du flux Standard Output
+    $outEvent = Register-ObjectEvent -InputObject $process -EventName "OutputDataReceived" -Action {
+        if (-not [string]::IsNullOrWhiteSpace($Event.SourceEventArgs.Data)) {
+            Write-Log -Message "[DRIVERS] $($Event.SourceEventArgs.Data)" -Color $Event.MessageData.Color
+        }
+    } -MessageData @{ Color = $TextColor }
+
+    # Redirection asynchrone du flux Standard Error
+    $errEvent = Register-ObjectEvent -InputObject $process -EventName "ErrorDataReceived" -Action {
+        if (-not [string]::IsNullOrWhiteSpace($Event.SourceEventArgs.Data)) {
+            Write-Log -Message "[DRIVERS] $($Event.SourceEventArgs.Data)" -Color ([System.Drawing.Color]::OrangeRed)
+        }
     }
+
+    try {
+        $null = $process.Start()
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+
+        while (-not $process.HasExited) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 50
+        }
+
+        $process.WaitForExit()
+        return $process.ExitCode
+    } catch {
+        Write-Log -Message "[DRIVERS] ERREUR d'exécution : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        return -1
+    } finally {
+        Unregister-Event -SourceIdentifier $outEvent.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $errEvent.Name -ErrorAction SilentlyContinue
+        $process.Dispose()
+    }
+}
+
+# ------------------------------------------
+# HELPER : DÉTECTION SYSNATIVE (64-bit)
+# ------------------------------------------
+function Get-SystemExecutable {
+    param([string]$ExeName)
+
+    $sysNativePath = Join-Path $env:SystemRoot "SysNative\$ExeName"
+    $system32Path  = Join-Path $env:SystemRoot "System32\$ExeName"
+
+    if (Test-Path $sysNativePath) {
+        return $sysNativePath
+    } elseif (Test-Path $system32Path) {
+        return $system32Path
+    }
+    return $ExeName
 }
 
 # ------------------------------------------
@@ -40,11 +96,11 @@ function Get-R2ChapBasePath {
     }
 
     $CurrentDir = Get-Item $ScriptDir
-    while ($CurrentDir -and $CurrentDir.Name -ne "R2CHAP" -and $CurrentDir.Parent) {
+    while ($CurrentDir -and $CurrentDir.Name -ne "R2CHAPINSTALL" -and $CurrentDir.Parent) {
         $CurrentDir = $CurrentDir.Parent
     }
 
-    if ($CurrentDir -and $CurrentDir.Name -eq "R2CHAP") { 
+    if ($CurrentDir -and $CurrentDir.Name -eq "R2CHAPINSTALL") { 
         return $CurrentDir.FullName 
     } else { 
         return $ScriptDir 
@@ -73,25 +129,21 @@ function Get-R2ChapDriversPath {
 }
 
 # ------------------------------------------
-# FONCTIONS NATIVES : ACTIONS DU SYSTEME
+# ACTIONS DU SYSTÈME
 # ------------------------------------------
 
 function Open-DeviceManager {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Ouverture du Gestionnaire de périphériques..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Ouverture du Gestionnaire de périphériques..." -Color ([System.Drawing.Color]::Cyan)
     try {
         Start-Process "devmgmt.msc"
     } catch {
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "[DRIVERS] ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
-# 1. SAUVEGARDE EN TEMPS RÉEL (PC ➔ USB)
+# 1. SAUVEGARDE EN TEMPS RÉEL (PC ➔ USB) VIA DISM
 function Export-SystemDrivers {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [System.Windows.Forms.Form]$ParentForm
-    )
+    param([System.Windows.Forms.Form]$ParentForm)
     
     $defaultFolderName = "$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd')"
     
@@ -102,186 +154,140 @@ function Export-SystemDrivers {
     )
 
     if ([string]::IsNullOrWhiteSpace($folderName)) {
-        Write-DriverLog -LogBox $LogBox -Message "Exportation annulée par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
+        Write-Log -Message "[DRIVERS] Exportation annulée par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
         return
     }
 
     $folderName = $folderName -replace '[\\/:*?"<>|]', '_'
     $TargetFolder = Get-R2ChapDriversPath -SubFolder $folderName
 
-    Write-DriverLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Sauvegarde des pilotes système..." -Color ([System.Drawing.Color]::Cyan)
-    Write-DriverLog -LogBox $LogBox -Message "Dossier cible : $TargetFolder" -Color ([System.Drawing.Color]::Yellow)
+    Write-Log -Message "[DRIVERS] ==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Sauvegarde des pilotes système via DISM..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] Dossier cible : $TargetFolder" -Color ([System.Drawing.Color]::Yellow)
 
-    # Exécution via Job pour libérer le thread graphique
-    $job = Start-Job -ScriptBlock {
-        param($dest)
-        Export-WindowsDriver -Online -Destination $dest -ErrorAction Stop
-    } -ArgumentList $TargetFolder
-
-    $seenFolders = @()
-
-    # Suivi visuel continu dans le bloc RichTextBox
-    while ($job.State -eq "Running") {
-        [System.Windows.Forms.Application]::DoEvents()
-        
-        if (Test-Path $TargetFolder) {
-            $currentFolders = Get-ChildItem -Path $TargetFolder -Directory -ErrorAction SilentlyContinue
-            foreach ($dir in $currentFolders) {
-                if ($seenFolders -notcontains $dir.Name) {
-                    $seenFolders += $dir.Name
-                    Write-DriverLog -LogBox $LogBox -Message " Extrait : $($dir.Name)" -Color ([System.Drawing.Color]::LightGreen)
-                }
-            }
-        }
-        Start-Sleep -Milliseconds 300
-    }
+    $dismExe = Get-SystemExecutable "dism.exe"
 
     try {
-        $result = Receive-Job -Job $job -ErrorAction Stop
-        Remove-Job -Job $job -Force
+        $exitCode = Invoke-ExecutableWithLog -ExePath $dismExe -Arguments "/online /export-driver /destination:`"$TargetFolder`"" -TextColor ([System.Drawing.Color]::White)
 
-        if (Test-Path $TargetFolder) {
-            $currentFolders = Get-ChildItem -Path $TargetFolder -Directory -ErrorAction SilentlyContinue
-            foreach ($dir in $currentFolders) {
-                if ($seenFolders -notcontains $dir.Name) {
-                    $seenFolders += $dir.Name
-                    Write-DriverLog -LogBox $LogBox -Message " Extrait : $($dir.Name)" -Color ([System.Drawing.Color]::LightGreen)
-                }
-            }
+        if ($exitCode -eq 0) {
+            $exportedFiles = Get-ChildItem -Path $TargetFolder -Recurse -Filter "*.inf" -ErrorAction SilentlyContinue
+            Write-Log -Message "[DRIVERS] SUCCÈS : Exportation terminée ! $($exportedFiles.Count) pilote(s) sauvegardé(s)." -Color ([System.Drawing.Color]::ForestGreen)
+        } else {
+            Write-Log -Message "[DRIVERS] ÉCHEC DISM (Code $exitCode). Vérifiez les droits administrateur." -Color ([System.Drawing.Color]::Red)
         }
-
-        Write-DriverLog -LogBox $LogBox -Message "--------------------------------------------------" -Color ([System.Drawing.Color]::Cyan)
-        Write-DriverLog -LogBox $LogBox -Message "SUCCÈS : $($seenFolders.Count) dossier(s) de pilote(s) exporté(s) !" -Color ([System.Drawing.Color]::ForestGreen)
-        Write-DriverLog -LogBox $LogBox -Message "Sauvegardé dans : $TargetFolder" -Color ([System.Drawing.Color]::ForestGreen)
-
     } catch {
-        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR lors de l'exportation (Droits Admin requis) : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "[DRIVERS] ERREUR d'exportation : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
-# 2. RESTAURATION CIBLÉE (USB ➔ PC)
+# 2. RESTAURATION / INSTALLATION MULTI-MÉTHODES (USB ➔ PC)
 function Import-SystemDriversFromUSB {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [System.Windows.Forms.Form]$ParentForm
-    )
+    param([System.Windows.Forms.Form]$ParentForm)
     
     $baseDriversFolder = Get-R2ChapDriversPath
 
     $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-    $folderBrowser.Description = "Sélectionnez le dossier contenant les pilotes à installer sur ce PC"
+    $folderBrowser.Description = "Sélectionnez le dossier contenant les pilotes (.inf/.cat) à installer"
     $folderBrowser.SelectedPath = $baseDriversFolder
     $folderBrowser.ShowNewFolderButton = $false
 
     $dialogResult = $folderBrowser.ShowDialog()
 
     if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK -or [string]::IsNullOrWhiteSpace($folderBrowser.SelectedPath)) {
-        Write-DriverLog -LogBox $LogBox -Message "Restauration annulée par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
+        Write-Log -Message "[DRIVERS] Restauration annulée par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
         return
     }
 
     $SelectedFolder = $folderBrowser.SelectedPath
 
-    Write-DriverLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Restauration des pilotes depuis USB..." -Color ([System.Drawing.Color]::Cyan)
-    Write-DriverLog -LogBox $LogBox -Message "Dossier source : $SelectedFolder" -Color ([System.Drawing.Color]::Yellow)
+    Write-Log -Message "[DRIVERS] ==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Recherche des packages de pilotes (.INF) dans le dossier..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] Source : $SelectedFolder" -Color ([System.Drawing.Color]::Yellow)
 
     $infFiles = Get-ChildItem -Path $SelectedFolder -Recurse -Filter "*.inf" -ErrorAction SilentlyContinue
 
     if (-not $infFiles -or $infFiles.Count -eq 0) {
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR : Aucun fichier pilote (.inf) n'a été trouvé dans ce dossier." -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "[DRIVERS] ERREUR : Aucun fichier .inf trouvé dans ce dossier." -Color ([System.Drawing.Color]::Red)
         return
     }
 
-    Write-DriverLog -LogBox $LogBox -Message "Détection de $($infFiles.Count) fichier(s) .inf à installer..." -Color ([System.Drawing.Color]::White)
+    Write-Log -Message "[DRIVERS] Trouvé : $($infFiles.Count) fichier(s) .inf." -Color ([System.Drawing.Color]::White)
 
-    try {
-        $pnpArgs = "/add-driver `"$SelectedFolder\*.inf`" /subdirs /install"
-        
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = "pnputil.exe"
-        $psi.Arguments = $pnpArgs
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.CreateNoWindow = $true
+    # Méthode 1 : PNPUtil global
+    $pnpExe = Get-SystemExecutable "pnputil.exe"
+    Write-Log -Message "[DRIVERS] Lancement de PNPUtil en mode global..." -Color ([System.Drawing.Color]::White)
 
-        $process = New-Object System.Diagnostics.Process
-        $process.StartInfo = $psi
-        [void]$process.Start()
+    $exitCode = Invoke-ExecutableWithLog -ExePath $pnpExe -Arguments "/add-driver `"$SelectedFolder\*.inf`" /subdirs /install" -TextColor ([System.Drawing.Color]::LightGreen)
 
-        while (-not $process.HasExited) {
-            $line = $process.StandardOutput.ReadLine()
-            if ($line) {
-                if ($line -match "publié" -or $line -match "Published" -or $line -match "Ajouté") {
-                    Write-DriverLog -LogBox $LogBox -Message " -> $line" -Color ([System.Drawing.Color]::LightGreen)
-                } elseif ($line -match "Échec" -or $line -match "Failed") {
-                    Write-DriverLog -LogBox $LogBox -Message " -> $line" -Color ([System.Drawing.Color]::Orange)
-                }
-            }
-            [System.Windows.Forms.Application]::DoEvents()
-        }
-
-        $process.WaitForExit()
-
-        Write-DriverLog -LogBox $LogBox -Message "--------------------------------------------------" -Color ([System.Drawing.Color]::Cyan)
-        if ($process.ExitCode -eq 0) {
-            Write-DriverLog -LogBox $LogBox -Message "SUCCÈS : Processus d'installation terminé !" -Color ([System.Drawing.Color]::ForestGreen)
-        } else {
-            Write-DriverLog -LogBox $LogBox -Message "FIN : Installation terminée avec le code $($process.ExitCode)." -Color ([System.Drawing.Color]::Yellow)
-        }
-    } catch {
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR lors de l'exécution de PNPUtil : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+    if ($exitCode -eq 0) {
+        Write-Log -Message "[DRIVERS] SUCCÈS : Installation globale terminée avec succès !" -Color ([System.Drawing.Color]::ForestGreen)
+        return
     }
+
+    # Fallback : Fichier par fichier
+    Write-Log -Message "[DRIVERS] Passage en mode installation individuelle par fichier .INF..." -Color ([System.Drawing.Color]::Yellow)
+
+    $successCount = 0
+    $failCount = 0
+    $currentIndex = 0
+
+    foreach ($file in $infFiles) {
+        $currentIndex++
+        Write-Log -Message "[DRIVERS] [$currentIndex/$($infFiles.Count)] Installation : $($file.Name)..." -Color ([System.Drawing.Color]::LightGreen)
+
+        $res = Invoke-ExecutableWithLog -ExePath $pnpExe -Arguments "/add-driver `"$($file.FullName)`" /install" -TextColor ([System.Drawing.Color]::White)
+
+        if ($res -eq 0 -or $res -eq 3010) {
+            $successCount++
+        } else {
+            $failCount++
+        }
+    }
+
+    Write-Log -Message "[DRIVERS] --------------------------------------------------" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] FIN DU TRAITEMENT : $successCount installé(s) / $failCount échec(s) ou ignoré(s)." -Color ([System.Drawing.Color]::ForestGreen)
 }
 
 function Open-DriversDirectory {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
     $path = Get-R2ChapDriversPath
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Ouverture de l'explorateur ($path)" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Ouverture de l'explorateur ($path)" -Color ([System.Drawing.Color]::Cyan)
     try {
         Start-Process "explorer.exe" -ArgumentList "`"$path`""
     } catch {
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "[DRIVERS] ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
 function Start-HWInfo {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
     $rootDir = Get-R2ChapBasePath
     $exePath = Join-Path $rootDir "apps\HWinfo\HWiNFO64.exe"
 
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Lancement de HWiNFO64..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Lancement de HWiNFO64..." -Color ([System.Drawing.Color]::Cyan)
     
     if (Test-Path $exePath) {
-        try { Start-Process $exePath } catch { Write-DriverLog -LogBox $LogBox -Message "ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red) }
+        try { Start-Process $exePath } catch { Write-Log -Message "[DRIVERS] ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red) }
     } else {
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR : Fichier introuvable ($exePath)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "[DRIVERS] ERREUR : Fichier introuvable ($exePath)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
 function Start-FirefoxPortable {
-    param([System.Windows.Forms.RichTextBox]$LogBox)
     $rootDir = Get-R2ChapBasePath
     $exePath = Join-Path $rootDir "apps\FirefoxPortable\FirefoxPortable.exe"
 
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Lancement de Firefox Portable..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Lancement de Firefox Portable..." -Color ([System.Drawing.Color]::Cyan)
 
     if (Test-Path $exePath) {
-        try { Start-Process $exePath } catch { Write-DriverLog -LogBox $LogBox -Message "ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red) }
+        try { Start-Process $exePath } catch { Write-Log -Message "[DRIVERS] ERREUR : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red) }
     } else {
-        Write-DriverLog -LogBox $LogBox -Message "ERREUR : Fichier introuvable ($exePath)" -Color ([System.Drawing.Color]::Red)
+        Write-Log -Message "[DRIVERS] ERREUR : Fichier introuvable ($exePath)" -Color ([System.Drawing.Color]::Red)
     }
 }
 
-# 3. NETTOYAGE EXPRESS FLUIDE ET EN TEMPS RÉEL
+# 3. NETTOYAGE EXPRESS
 function Clear-TempAndDownloads {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [System.Windows.Forms.Form]$ParentForm
-    )
+    param([System.Windows.Forms.Form]$ParentForm)
 
     $confirm = [System.Windows.Forms.MessageBox]::Show(
         "Le nettoyage express va fermer les navigateurs Web et supprimer le contenu des dossiers Temp et Téléchargements.`n`nSouhaitez-vous continuer ?",
@@ -291,31 +297,28 @@ function Clear-TempAndDownloads {
     )
 
     if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
-        Write-DriverLog -LogBox $LogBox -Message "Nettoyage annulé par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
+        Write-Log -Message "[DRIVERS] Nettoyage annulé par l'utilisateur." -Color ([System.Drawing.Color]::Orange)
         return
     }
 
-    Write-DriverLog -LogBox $LogBox -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-DriverLog -LogBox $LogBox -Message "ACTION : Démarrage du nettoyage express..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ==========================================" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] ACTION : Démarrage du nettoyage express..." -Color ([System.Drawing.Color]::Cyan)
 
-    # Fermeture dynamique des navigateurs
     $browsers = @("chrome", "msedge", "firefox", "brave", "opera")
     foreach ($proc in $browsers) {
         $runningProcs = Get-Process -Name $proc -ErrorAction SilentlyContinue
         if ($runningProcs) {
             Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
-            Write-DriverLog -LogBox $LogBox -Message " Processus '$proc' fermé." -Color ([System.Drawing.Color]::OrangeRed)
-            [System.Windows.Forms.Application]::DoEvents()
+            Write-Log -Message "[DRIVERS] Processus '$proc' fermé." -Color ([System.Drawing.Color]::OrangeRed)
         }
     }
 
     Start-Sleep -Milliseconds 300
 
-    # Ciblage dynamique selon l'utilisateur
     $userProfile = [Environment]::GetFolderPath("UserProfile")
     $userDownloads = Join-Path $userProfile "Downloads"
     $userTemp      = [System.IO.Path]::GetTempPath()
-    $winTemp       = "C:\Windows\Temp"
+    $winTemp       = Join-Path $env:SystemRoot "Temp"
 
     $foldersToClean = @(
         @{ Name = "Téléchargements ($env:USERNAME)"; Path = $userDownloads },
@@ -328,37 +331,34 @@ function Clear-TempAndDownloads {
 
     foreach ($item in $foldersToClean) {
         $targetPath = $item.Path
-        Write-DriverLog -LogBox $LogBox -Message "--- Nettoyage : $($item.Name) ---" -Color ([System.Drawing.Color]::Yellow)
+        Write-Log -Message "[DRIVERS] --- Nettoyage : $($item.Name) ---" -Color ([System.Drawing.Color]::Yellow)
 
         if (Test-Path $targetPath) {
             $elements = Get-ChildItem -Path $targetPath -ErrorAction SilentlyContinue
 
             if (-not $elements -or $elements.Count -eq 0) {
-                Write-DriverLog -LogBox $LogBox -Message " Aucun fichier à supprimer ou dossier déjà vide." -Color ([System.Drawing.Color]::Gray)
+                Write-Log -Message "[DRIVERS] Aucun fichier à supprimer ou dossier déjà vide." -Color ([System.Drawing.Color]::Gray)
                 continue
             }
 
             foreach ($el in $elements) {
-                # Rafraîchissement graphique immédiat
-                [System.Windows.Forms.Application]::DoEvents()
-                
                 try {
                     Remove-Item -Path $el.FullName -Recurse -Force -ErrorAction Stop
                     $deletedCount++
-                    Write-DriverLog -LogBox $LogBox -Message " Supprimé : $($el.Name)" -Color ([System.Drawing.Color]::LightGreen)
+                    Write-Log -Message "[DRIVERS] Supprimé : $($el.Name)" -Color ([System.Drawing.Color]::LightGreen)
                 } catch {
                     $skippedCount++
-                    Write-DriverLog -LogBox $LogBox -Message " Ignoré (Verrouillé/Refusé) : $($el.Name)" -Color ([System.Drawing.Color]::Gray)
+                    Write-Log -Message "[DRIVERS] Ignoré (Verrouillé/Refusé) : $($el.Name)" -Color ([System.Drawing.Color]::Gray)
                 }
             }
         } else {
-            Write-DriverLog -LogBox $LogBox -Message " Dossier introuvable : $targetPath" -Color ([System.Drawing.Color]::Gray)
+            Write-Log -Message "[DRIVERS] Dossier introuvable : $targetPath" -Color ([System.Drawing.Color]::Gray)
         }
     }
 
-    Write-DriverLog -LogBox $LogBox -Message "--------------------------------------------------" -Color ([System.Drawing.Color]::Cyan)
-    Write-DriverLog -LogBox $LogBox -Message "SUCCÈS : Nettoyage express terminé !" -Color ([System.Drawing.Color]::ForestGreen)
-    Write-DriverLog -LogBox $LogBox -Message "Bilan : $deletedCount élément(s) supprimé(s), $skippedCount verrouillé(s) ignoré(s)." -Color ([System.Drawing.Color]::White)
+    Write-Log -Message "[DRIVERS] --------------------------------------------------" -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[DRIVERS] SUCCÈS : Nettoyage express terminé !" -Color ([System.Drawing.Color]::ForestGreen)
+    Write-Log -Message "[DRIVERS] Bilan : $deletedCount élément(s) supprimé(s), $skippedCount verrouillé(s) ignoré(s)." -Color ([System.Drawing.Color]::White)
 }
 
 # ------------------------------------------
@@ -374,17 +374,7 @@ function Build-TabDrivers {
     $emojiFontBtn = New-Object System.Drawing.Font("Segoe UI Emoji", 8.5, [System.Drawing.FontStyle]::Bold)
     $emojiFontCard = New-Object System.Drawing.Font("Segoe UI Emoji", 15)
 
-    # Console Log
-    $logBox = New-Object System.Windows.Forms.RichTextBox
-    $logBox.Location = New-Object System.Drawing.Point(10, 310)
-    $logBox.Size = New-Object System.Drawing.Size(840, 145)
-    $logBox.BackColor = [System.Drawing.Color]::Black
-    $logBox.ForeColor = [System.Drawing.Color]::White
-    $logBox.ReadOnly = $true
-    $logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5, [System.Drawing.FontStyle]::Regular)
-    $TargetTab.Controls.Add($logBox)
-
-    Write-DriverLog -LogBox $logBox -Message "Module Pilotes initialisé. Prêt à l'emploi." -Color ([System.Drawing.Color]::LightGray)
+    Write-Log -Message "Module Pilotes chargé." -Color ([System.Drawing.Color]::LightGray)
 
     # Actions du haut
     $panelActions = New-Object System.Windows.Forms.GroupBox
@@ -404,7 +394,7 @@ function Build-TabDrivers {
     $btnScan.ForeColor = [System.Drawing.Color]::White
     $btnScan.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnScan.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnScan.Add_Click({ Open-DeviceManager -LogBox $logBox })
+    $btnScan.Add_Click({ Open-DeviceManager })
     $panelActions.Controls.Add($btnScan)
 
     # Bouton 2 : Sauvegarde (PC ➔ USB)
@@ -417,7 +407,7 @@ function Build-TabDrivers {
     $btnExport.ForeColor = [System.Drawing.Color]::White
     $btnExport.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnExport.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnExport.Add_Click({ Export-SystemDrivers -LogBox $logBox -ParentForm $ParentForm })
+    $btnExport.Add_Click({ Export-SystemDrivers -ParentForm $ParentForm })
     $panelActions.Controls.Add($btnExport)
 
     # Bouton 3 : Installation (USB ➔ PC)
@@ -430,7 +420,7 @@ function Build-TabDrivers {
     $btnImport.ForeColor = [System.Drawing.Color]::White
     $btnImport.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnImport.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnImport.Add_Click({ Import-SystemDriversFromUSB -LogBox $logBox -ParentForm $ParentForm })
+    $btnImport.Add_Click({ Import-SystemDriversFromUSB -ParentForm $ParentForm })
     $panelActions.Controls.Add($btnImport)
 
     # Barre de chemin
@@ -463,7 +453,7 @@ function Build-TabDrivers {
     $btnExplore.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnExplore.FlatAppearance.BorderSize = 0
     $btnExplore.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnExplore.Add_Click({ Open-DriversDirectory -LogBox $logBox })
+    $btnExplore.Add_Click({ Open-DriversDirectory })
     $panelPath.Controls.Add($btnExplore)
 
     # Cartes Outils
@@ -476,14 +466,14 @@ function Build-TabDrivers {
 
     $appsPanel = New-Object System.Windows.Forms.Panel
     $appsPanel.Location = New-Object System.Drawing.Point(10, 155)
-    $appsPanel.Size = New-Object System.Drawing.Size(840, 145)
+    $appsPanel.Size = New-Object System.Drawing.Size(840, 160)
     $appsPanel.AutoScroll = $true
     $TargetTab.Controls.Add($appsPanel)
 
     $toolsList = @(
-        @{ Title = "HWiNFO64"; Category = "Info Matériel (USB)"; Icon = "💻"; Action = { Start-HWInfo -LogBox $logBox } },
-        @{ Title = "Firefox Portable"; Category = "Recherche Drivers (Sans Trace)"; Icon = "🦊"; Action = { Start-FirefoxPortable -LogBox $logBox } },
-        @{ Title = "Nettoyage Express"; Category = "Ferme Browsers & Vide Temp"; Icon = "🧹"; Action = { Clear-TempAndDownloads -LogBox $logBox -ParentForm $ParentForm } }
+        @{ Title = "HWiNFO64"; Category = "Info Matériel (USB)"; Icon = "💻"; Action = { Start-HWInfo } },
+        @{ Title = "Firefox Portable"; Category = "Recherche Drivers (Sans Trace)"; Icon = "🦊"; Action = { Start-FirefoxPortable } },
+        @{ Title = "Nettoyage Express"; Category = "Ferme Browsers & Vide Temp"; Icon = "🧹"; Action = { Clear-TempAndDownloads -ParentForm $ParentForm } }
     )
 
     $colCount = 3

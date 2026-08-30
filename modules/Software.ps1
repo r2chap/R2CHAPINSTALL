@@ -1,6 +1,7 @@
 ﻿# ==========================================
 # MODULE : SOFTWARE (Programme)
 # Fichier : modules/Software.ps1
+# Version : v1.9
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -10,9 +11,9 @@ Add-Type -AssemblyName System.Drawing
 # LISTE DES LOGICIELS (IDs Winget valides)
 # ------------------------------------------
 $script:AppList = @(
-    @{ Name = "Chrome";        Id = "Google.Chrome";           Category = "Navigateur";  IconFile = "chrome.png";   FallbackIcon = "🌐" },
+    @{ Name = "Chrome";        Id = "Google.Chrome";            Category = "Navigateur";  IconFile = "chrome.png";   FallbackIcon = "🌐" },
     @{ Name = "Firefox";       Id = "Mozilla.Firefox";          Category = "Navigateur";  IconFile = "firefox.png";  FallbackIcon = "🦊" },
-    @{ Name = "Opera";         Id = "Opera.OperaBrowser";      Category = "Navigateur";  IconFile = "opera.png";    FallbackIcon = "🔴" },
+    @{ Name = "Opera";         Id = "Opera.OperaBrowser";       Category = "Navigateur";  IconFile = "opera.png";    FallbackIcon = "🔴" },
     @{ Name = "Foxit Reader";  Id = "Foxit.FoxitReader";        Category = "Bureautique"; IconFile = "foxit.png";    FallbackIcon = "📄" },
     @{ Name = "VLC";           Id = "VideoLAN.VLC";             Category = "Média";       IconFile = "vlc.png";      FallbackIcon = "📙" },
     @{ Name = "Notepad++";     Id = "Notepad++.Notepad++";      Category = "Utilitaires"; IconFile = "notepad.png";  FallbackIcon = "📝" },
@@ -63,24 +64,6 @@ function Get-AppIconImage {
 }
 
 # ------------------------------------------
-# HELPER : LOGGING
-# ------------------------------------------
-function Write-SoftwareLog {
-    param(
-        [System.Windows.Forms.RichTextBox]$LogBox,
-        [string]$Message,
-        [System.Drawing.Color]$Color
-    )
-    if ($LogBox -and -not $LogBox.IsDisposed) {
-        $LogBox.SelectionStart = $LogBox.TextLength
-        $LogBox.SelectionLength = 0
-        $LogBox.SelectionColor = $Color
-        $LogBox.AppendText("[$([DateTime]::Now.ToString('HH:mm:ss'))] $Message`n")
-        $LogBox.ScrollToCaret()
-    }
-}
-
-# ------------------------------------------
 # HELPER : TRADUCTION DES CODES D'ERREUR WINGET
 # ------------------------------------------
 function Get-WingetErrorMessage {
@@ -107,12 +90,9 @@ $script:InvokeInstallBlock = {
     param(
         [array]$AppsToInstall,
         [System.Windows.Forms.Button]$BtnInstallAll,
-        [System.Windows.Forms.ProgressBar]$ProgressBar,
-        [System.Windows.Forms.RichTextBox]$LogBox,
         [System.Windows.Forms.Form]$ParentForm
     )
     
-    # Calcul du nombre total d'éléments (en décomposant si un item contient plusieurs IDs)
     $totalPackages = 0
     foreach ($app in $AppsToInstall) {
         if ($app.Id -is [array]) {
@@ -122,28 +102,22 @@ $script:InvokeInstallBlock = {
         }
     }
 
-    if ($BtnInstallAll)  { $BtnInstallAll.Enabled = $false }
-    if ($ProgressBar)    { $ProgressBar.Value = 0; $ProgressBar.Maximum = $totalPackages + 1 }
+    if ($BtnInstallAll) { $BtnInstallAll.Enabled = $false }
 
     # ÉTAPE 1 : MISE À JOUR DES SOURCES WINGET
-    Write-SoftwareLog -LogBox $LogBox -Message "Mise à jour des catalogues de sources Winget..." -Color ([System.Drawing.Color]::Blue)
+    Write-Log -Message "Mise à jour des catalogues de sources Winget..." -Color ([System.Drawing.Color]::Cyan)
     if ($ParentForm) { $ParentForm.Refresh() }
 
     $updateProcess = Start-Process -FilePath "winget" -ArgumentList "source update" -NoNewWindow -PassThru -Wait
-    if ($ProgressBar) { $ProgressBar.Value = 1 }
 
-    Write-SoftwareLog -LogBox $LogBox -Message "Début de l'installation ($totalPackages paquet(s) au total)..." -Color ([System.Drawing.Color]::Blue)
+    Write-Log -Message "Début de l'installation ($totalPackages paquet(s) au total)..." -Color ([System.Drawing.Color]::Cyan)
 
     # ÉTAPE 2 : INSTALLATION DES APPLICATIONS
-    $step = 1
     foreach ($app in $AppsToInstall) {
-        
-        # Conversion systématique en tableau pour supporter 1 ou plusieurs IDs par carte
         $pkgList = @($app.Id)
 
         foreach ($pkgId in $pkgList) {
-            $step++
-            Write-SoftwareLog -LogBox $LogBox -Message "Installation de $($app.Name) [$pkgId]..." -Color ([System.Drawing.Color]::DarkSlateGray)
+            Write-Log -Message "Installation de $($app.Name) [$pkgId]..." -Color ([System.Drawing.Color]::Yellow)
             if ($ParentForm) { $ParentForm.Refresh() }
 
             $process = Start-Process -FilePath "winget" -ArgumentList "install --id `"$pkgId`" -s winget -e --silent --accept-package-agreements --accept-source-agreements" -NoNewWindow -PassThru -Wait
@@ -152,17 +126,16 @@ $script:InvokeInstallBlock = {
             $statusMessage = Get-WingetErrorMessage -Code $exitCode
 
             if ($exitCode -eq 0 -or $exitCode -eq -1978335189) {
-                Write-SoftwareLog -LogBox $LogBox -Message "SUCCÈS : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::ForestGreen)
+                Write-Log -Message "SUCCÈS : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::ForestGreen)
             } else {
-                Write-SoftwareLog -LogBox $LogBox -Message "ERREUR : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::Red)
+                Write-Log -Message "ERREUR : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::Red)
             }
 
-            if ($ProgressBar) { $ProgressBar.Value = [Math]::Min($step, $ProgressBar.Maximum) }
-            if ($ParentForm)  { $ParentForm.Refresh() }
+            if ($ParentForm) { $ParentForm.Refresh() }
         }
     }
 
-    Write-SoftwareLog -LogBox $LogBox -Message "Opérations terminées." -Color ([System.Drawing.Color]::Blue)
+    Write-Log -Message "Opérations terminées." -Color ([System.Drawing.Color]::Cyan)
     if ($BtnInstallAll) { $BtnInstallAll.Enabled = $true }
 }
 
@@ -189,28 +162,12 @@ function Build-TabProgramme {
     $btnInstallAll.Cursor = [System.Windows.Forms.Cursors]::Hand
     $TargetTab.Controls.Add($btnInstallAll)
 
-    # Conteneur des cartes d'applications
+    # Conteneur des cartes d'applications (Agrandit car le log local est retiré)
     $appsPanel = New-Object System.Windows.Forms.Panel
     $appsPanel.Location = New-Object System.Drawing.Point(10, 50)
-    $appsPanel.Size = New-Object System.Drawing.Size(840, 240)
+    $appsPanel.Size = New-Object System.Drawing.Size(840, 280)
     $appsPanel.AutoScroll = $true
     $TargetTab.Controls.Add($appsPanel)
-
-    # Console de Log
-    $logBox = New-Object System.Windows.Forms.RichTextBox
-    $logBox.Location = New-Object System.Drawing.Point(10, 310)
-    $logBox.Size = New-Object System.Drawing.Size(840, 115)
-    $logBox.BackColor = [System.Drawing.Color]::White
-    $logBox.ReadOnly = $true
-    $logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5, [System.Drawing.FontStyle]::Regular)
-    $TargetTab.Controls.Add($logBox)
-
-    # Barre de progression
-    $progressBar = New-Object System.Windows.Forms.ProgressBar
-    $progressBar.Location = New-Object System.Drawing.Point(10, 435)
-    $progressBar.Size = New-Object System.Drawing.Size(840, 20)
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-    $TargetTab.Controls.Add($progressBar)
 
     # Grille 3 colonnes
     $colCount = 3
@@ -275,13 +232,11 @@ function Build-TabProgramme {
         # Action Clic
         $appTarget = $app
         $bInstall = $btnInstallAll
-        $pBar = $progressBar
-        $lBox = $logBox
         $pForm = $ParentForm
         $installBlock = $script:InvokeInstallBlock
 
         $actionClick = {
-            & $installBlock -AppsToInstall @($appTarget) -BtnInstallAll $bInstall -ProgressBar $pBar -LogBox $lBox -ParentForm $pForm
+            & $installBlock -AppsToInstall @($appTarget) -BtnInstallAll $bInstall -ParentForm $pForm
         }.GetNewClosure()
 
         $card.Add_Click($actionClick)
@@ -294,12 +249,10 @@ function Build-TabProgramme {
 
     # Clic Tout Installer
     $bInstall = $btnInstallAll
-    $pBar = $progressBar
-    $lBox = $logBox
     $pForm = $ParentForm
     $installBlock = $script:InvokeInstallBlock
 
     $btnInstallAll.Add_Click({
-        & $installBlock -AppsToInstall $script:AppList -BtnInstallAll $bInstall -ProgressBar $pBar -LogBox $lBox -ParentForm $pForm
+        & $installBlock -AppsToInstall $script:AppList -BtnInstallAll $bInstall -ParentForm $pForm
     }.GetNewClosure())
 }
