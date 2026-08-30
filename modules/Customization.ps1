@@ -1,7 +1,7 @@
 ﻿# ==========================================
 # MODULE : CUSTOMIZATION (Personnalisation & Multimédia)
 # Fichier : modules/Customization.ps1
-# Version : v1.9
+# Version : v1.9 (Aligné sur Charte Sombre)
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -87,7 +87,7 @@ function Get-LocalAssetFile {
     if (Test-Path $assetPath) {
         try {
             Copy-Item -Path $assetPath -Destination $localPath -Force
-            Write-Log -Message "Asset copié depuis USB vers : $localPath" -Color ([System.Drawing.Color]::Gray)
+            Write-Log -Message "Asset copié depuis USB vers : $localPath" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
             return $localPath
         } catch {
             Write-Log -Message "ERREUR de copie de $FileName depuis USB : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
@@ -100,7 +100,7 @@ function Get-LocalAssetFile {
 }
 
 # ------------------------------------------
-# BLOC DE CODE D'INSTALLATION DE LOGICIELS (ÉQUIVALENT AU MODULE SOFTWARE)
+# BLOC DE CODE D'INSTALLATION DE LOGICIELS
 # ------------------------------------------
 $script:InvokeWingetInstallBlock = {
     param(
@@ -116,14 +116,14 @@ $script:InvokeWingetInstallBlock = {
 
     $targetId = $AppId
     if ([string]::IsNullOrWhiteSpace($targetId)) {
-        Write-Log -Message "Recherche du paquet '$AppName' dans WinGet..." -Color ([System.Drawing.Color]::Cyan)
+        Write-Log -Message "Recherche du paquet '$AppName' dans WinGet..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
         if ($ParentForm) { $ParentForm.Refresh() }
 
         $searchProc = Start-Process -FilePath "winget" -ArgumentList "search `"$AppName`" --accept-source-agreements" -NoNewWindow -PassThru -Wait
         $targetId = $AppName
     }
 
-    Write-Log -Message "Installation de $AppName [$targetId]..." -Color ([System.Drawing.Color]::Yellow)
+    Write-Log -Message "Installation de $AppName [$targetId]..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
     if ($ParentForm) { $ParentForm.Refresh() }
 
     $process = Start-Process -FilePath "winget" -ArgumentList "install --id `"$targetId`" -s winget -e --silent --accept-package-agreements --accept-source-agreements" -NoNewWindow -PassThru -Wait
@@ -132,7 +132,7 @@ $script:InvokeWingetInstallBlock = {
     $statusMessage = Get-WingetErrorMessage -Code $exitCode
 
     if ($exitCode -eq 0 -or $exitCode -eq -1978335189) {
-        Write-Log -Message "SUCCÈS : $AppName -> $statusMessage" -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : $AppName -> $statusMessage" -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     } else {
         Write-Log -Message "ERREUR : $AppName -> $statusMessage" -Color ([System.Drawing.Color]::Red)
     }
@@ -146,8 +146,8 @@ $script:InvokeWingetInstallBlock = {
 
 # 1. RACCOURCI WEB SUR LE BUREAU
 function Set-DesktopShortcut {
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-Log -Message "ACTION : Création du raccourci Web sur le bureau..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
+    Write-Log -Message "ACTION : Création du raccourci Web sur le bureau..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
     $iconPath = Get-LocalAssetFile -FileName "Logo.ico"
     $desktopPath = [Environment]::GetFolderPath("Desktop")
@@ -166,7 +166,7 @@ URL=https://r2chap.be
         }
 
         Set-Content -Path $shortcutPath -Value $content -Encoding ASCII -Force
-        Write-Log -Message "SUCCÈS : Raccourci vers https://r2chap.be créé sur le bureau." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Raccourci vers https://r2chap.be créé sur le bureau." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     } catch {
         Write-Log -Message "ERREUR lors de la création du raccourci : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
@@ -174,8 +174,8 @@ URL=https://r2chap.be
 
 # 2. APPLICATION DU FOND D'ÉCRAN
 function Set-DesktopWallpaper {
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-Log -Message "ACTION : Modification du fond d'écran..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
+    Write-Log -Message "ACTION : Modification du fond d'écran..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
     $wallpaperPath = Get-LocalAssetFile -FileName "wallpaper.png"
 
@@ -191,7 +191,7 @@ function Set-DesktopWallpaper {
 
         [Wallpaper]::SystemParametersInfo(0x0014, 0, $wallpaperPath, 0x01 -bor 0x02) | Out-Null
         
-        Write-Log -Message "SUCCÈS : Fond d'écran appliqué avec succès." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Fond d'écran appliqué avec succès." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     } catch {
         Write-Log -Message "ERREUR lors du changement de fond d'écran : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
@@ -199,8 +199,8 @@ function Set-DesktopWallpaper {
 
 # 3. MODIFICATION DE L'AVATAR UTILISATEUR
 function Set-UserAvatar {
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-Log -Message "ACTION : Modification de la photo de profil utilisateur..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
+    Write-Log -Message "ACTION : Modification de la photo de profil utilisateur..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
     $avatarPath = Get-LocalAssetFile -FileName "user_avatar.png"
 
@@ -224,7 +224,7 @@ function Set-UserAvatar {
         Set-ItemProperty -Path $regPath -Name "Image240" -Value $avatarPath -ErrorAction SilentlyContinue
         Set-ItemProperty -Path $regPath -Name "Image448" -Value $avatarPath -ErrorAction SilentlyContinue
 
-        Write-Log -Message "SUCCÈS : Photo de profil définie sur $avatarPath." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Photo de profil définie sur $avatarPath." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     } catch {
         Write-Log -Message "ERREUR lors du changement d'avatar : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
@@ -232,8 +232,8 @@ function Set-UserAvatar {
 
 # 4. CONFIGURATION DU THÈME ET COULEURS WINDOWS
 function Set-WindowsThemeAndColors {
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-Log -Message "ACTION : Application du thème et des couleurs d'accentuation..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
+    Write-Log -Message "ACTION : Application du thème et des couleurs d'accentuation..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
     try {
         $personalizePath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
@@ -251,7 +251,7 @@ function Set-WindowsThemeAndColors {
         Set-ItemProperty -Path $personalizePath -Name "ColorPrevalence" -Value 1 -Force
         Set-ItemProperty -Path $dwmPath -Name "AccentColorMenu" -Value 1 -ErrorAction SilentlyContinue
 
-        Write-Log -Message "SUCCÈS : Thème Sombre/Clair & Couleurs d'accentuation configurés." -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : Thème Sombre/Clair & Couleurs d'accentuation configurés." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     } catch {
         Write-Log -Message "ERREUR lors de la configuration du thème : $($_.Exception.Message)" -Color ([System.Drawing.Color]::Red)
     }
@@ -259,8 +259,8 @@ function Set-WindowsThemeAndColors {
 
 # 5. CONFIGURATION DU DNS VERS OPENDNS
 function Set-OpenDNSConfig {
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-Log -Message "ACTION : Configuration d'OpenDNS sur toutes les cartes réseau physiques..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
+    Write-Log -Message "ACTION : Configuration d'OpenDNS sur toutes les cartes réseau physiques..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
     try {
         $adapters = Get-NetAdapter -ErrorAction Stop | Where-Object { 
@@ -279,7 +279,7 @@ function Set-OpenDNSConfig {
 
         foreach ($adapter in $adapters) {
             $adapterName = $adapter.Name
-            Write-Log -Message " Traitement de l'interface : $adapterName ($($adapter.InterfaceDescription))" -Color ([System.Drawing.Color]::White)
+            Write-Log -Message " Traitement de l'interface : $adapterName ($($adapter.InterfaceDescription))" -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
             Set-DnsClientServerAddress -InterfaceAlias $adapterName -ResetServerAddresses -ErrorAction SilentlyContinue
             Set-DnsClientServerAddress -InterfaceAlias $adapterName -ServerAddresses ("208.67.222.222", "208.67.220.220") -ErrorAction SilentlyContinue
@@ -300,7 +300,7 @@ function Set-OpenDNSConfig {
         Clear-DnsClientCache -ErrorAction SilentlyContinue
 
         $listStr = $modifiedAdapters -join ", "
-        Write-Log -Message "SUCCÈS : OpenDNS configuré sur : $listStr" -Color ([System.Drawing.Color]::ForestGreen)
+        Write-Log -Message "SUCCÈS : OpenDNS configuré sur : $listStr" -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
 
         $msgText = "Les serveurs OpenDNS ont été appliqués avec succès sur les cartes physiques :`n" +
                    "• $($modifiedAdapters -join "`n• ")" + "`n`n" +
@@ -319,16 +319,16 @@ function Set-OpenDNSConfig {
 
 # 6. EXÉCUTION GLOBALE
 function Start-AllCustomizations {
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::Cyan)
-    Write-Log -Message "LANCEMENT DE LA PERSONNALISATION COMPLÈTE..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#A0AAB0"))
+    Write-Log -Message "LANCEMENT DE LA PERSONNALISATION COMPLÈTE..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
 
     Set-DesktopShortcut
     Set-DesktopWallpaper
     Set-UserAvatar
     Set-WindowsThemeAndColors
 
-    Write-Log -Message "==========================================" -Color ([System.Drawing.Color]::ForestGreen)
-    Write-Log -Message "TOUTES LES PERSONNALISATIONS SONT TERMINÉES !" -Color ([System.Drawing.Color]::ForestGreen)
+    Write-Log -Message "==========================================" -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
+    Write-Log -Message "TOUTES LES PERSONNALISATIONS SONT TERMINÉES !" -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
 }
 
 # ------------------------------------------
@@ -341,8 +341,20 @@ function Build-TabCustomization {
         [System.Drawing.Color]$BgColor
     )
 
-    $emojiFontBtn = New-Object System.Drawing.Font("Segoe UI Emoji", 8.5, [System.Drawing.FontStyle]::Bold)
+    # PALETTE ET POLICES SOMBRES & HAUT CONTRASTE
+    $textColor    = [System.Drawing.ColorTranslator]::FromHtml("#F1F4F4")
+    $subTextColor = [System.Drawing.ColorTranslator]::FromHtml("#A0AAB0")
+    $cardBgColor  = [System.Drawing.ColorTranslator]::FromHtml("#0A3468") # Bleu sombre
+    $btnPurple    = [System.Drawing.ColorTranslator]::FromHtml("#5B2C90") # Violet action
+    $btnCyan      = [System.Drawing.ColorTranslator]::FromHtml("#00838F") # Cyan foncé
+    $btnGreen     = [System.Drawing.ColorTranslator]::FromHtml("#0B6B3A") # Vert sombre
+    $btnBlue      = [System.Drawing.ColorTranslator]::FromHtml("#005A9E") # Bleu action
+    $btnOrange    = [System.Drawing.ColorTranslator]::FromHtml("#C35200") # Orange sombre
+
+    $emojiFontBtn  = New-Object System.Drawing.Font("Segoe UI Emoji", 8.5, [System.Drawing.FontStyle]::Bold)
     $emojiFontCard = New-Object System.Drawing.Font("Segoe UI Emoji", 13)
+
+    $TargetTab.BackColor = $BgColor
 
     # --------------------------------------------------
     # PANNEAU HAUT GAUCHE : Personnalisation R2CHAP
@@ -350,6 +362,7 @@ function Build-TabCustomization {
     $groupLeft = New-Object System.Windows.Forms.GroupBox
     $groupLeft.Text = " Personnalisation R2CHAP "
     $groupLeft.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $groupLeft.ForeColor = $textColor
     $groupLeft.Location = New-Object System.Drawing.Point(10, 10)
     $groupLeft.Size = New-Object System.Drawing.Size(415, 95)
     $TargetTab.Controls.Add($groupLeft)
@@ -359,9 +372,10 @@ function Build-TabCustomization {
     $btnAll.Font = $emojiFontBtn
     $btnAll.Size = New-Object System.Drawing.Size(390, 30)
     $btnAll.Location = New-Object System.Drawing.Point(12, 22)
-    $btnAll.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#6f42c1")
-    $btnAll.ForeColor = [System.Drawing.Color]::White
+    $btnAll.BackColor = $btnPurple
+    $btnAll.ForeColor = $textColor
     $btnAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnAll.FlatAppearance.BorderSize = 0
     $btnAll.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnAll.Add_Click({ Start-AllCustomizations })
     $groupLeft.Controls.Add($btnAll)
@@ -371,9 +385,10 @@ function Build-TabCustomization {
     $btnWeb.Font = $emojiFontBtn
     $btnWeb.Size = New-Object System.Drawing.Size(390, 28)
     $btnWeb.Location = New-Object System.Drawing.Point(12, 57)
-    $btnWeb.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#17A2B8")
-    $btnWeb.ForeColor = [System.Drawing.Color]::White
+    $btnWeb.BackColor = $btnCyan
+    $btnWeb.ForeColor = $textColor
     $btnWeb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnWeb.FlatAppearance.BorderSize = 0
     $btnWeb.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnWeb.Add_Click({ Set-DesktopShortcut })
     $groupLeft.Controls.Add($btnWeb)
@@ -384,6 +399,7 @@ function Build-TabCustomization {
     $groupRight = New-Object System.Windows.Forms.GroupBox
     $groupRight.Text = " Réseau & Multimédia WinGet "
     $groupRight.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $groupRight.ForeColor = $textColor
     $groupRight.Location = New-Object System.Drawing.Point(435, 10)
     $groupRight.Size = New-Object System.Drawing.Size(415, 95)
     $TargetTab.Controls.Add($groupRight)
@@ -393,9 +409,10 @@ function Build-TabCustomization {
     $btnDNS.Font = $emojiFontBtn
     $btnDNS.Size = New-Object System.Drawing.Size(390, 28)
     $btnDNS.Location = New-Object System.Drawing.Point(12, 22)
-    $btnDNS.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#28A745")
-    $btnDNS.ForeColor = [System.Drawing.Color]::White
+    $btnDNS.BackColor = $btnGreen
+    $btnDNS.ForeColor = $textColor
     $btnDNS.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnDNS.FlatAppearance.BorderSize = 0
     $btnDNS.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnDNS.Add_Click({ Set-OpenDNSConfig })
     $groupRight.Controls.Add($btnDNS)
@@ -409,9 +426,10 @@ function Build-TabCustomization {
     $btnKodi.Font = $emojiFontBtn
     $btnKodi.Size = New-Object System.Drawing.Size(190, 28)
     $btnKodi.Location = New-Object System.Drawing.Point(12, 57)
-    $btnKodi.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#007ACC")
-    $btnKodi.ForeColor = [System.Drawing.Color]::White
+    $btnKodi.BackColor = $btnBlue
+    $btnKodi.ForeColor = $textColor
     $btnKodi.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnKodi.FlatAppearance.BorderSize = 0
     $btnKodi.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnKodi.Add_Click({
         & $wingetInstallBlock -AppName "Kodi" -AppId "XBMCFoundation.Kodi" -ParentForm $pForm
@@ -424,9 +442,10 @@ function Build-TabCustomization {
     $btnRomstation.Font = $emojiFontBtn
     $btnRomstation.Size = New-Object System.Drawing.Size(192, 28)
     $btnRomstation.Location = New-Object System.Drawing.Point(210, 57)
-    $btnRomstation.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FD7E14")
-    $btnRomstation.ForeColor = [System.Drawing.Color]::White
+    $btnRomstation.BackColor = $btnOrange
+    $btnRomstation.ForeColor = $textColor
     $btnRomstation.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnRomstation.FlatAppearance.BorderSize = 0
     $btnRomstation.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnRomstation.Add_Click({
         & $wingetInstallBlock -AppName "Romstation" -AppId "" -ParentForm $pForm
@@ -439,6 +458,7 @@ function Build-TabCustomization {
     $lblCards = New-Object System.Windows.Forms.Label
     $lblCards.Text = "Paramètres système & visuels :"
     $lblCards.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $lblCards.ForeColor = $textColor
     $lblCards.Location = New-Object System.Drawing.Point(10, 115)
     $lblCards.Size = New-Object System.Drawing.Size(350, 20)
     $TargetTab.Controls.Add($lblCards)
@@ -471,13 +491,14 @@ function Build-TabCustomization {
         $card = New-Object System.Windows.Forms.Panel
         $card.Size = New-Object System.Drawing.Size($cardWidth, $cardHeight)
         $card.Location = New-Object System.Drawing.Point($posX, $posY)
-        $card.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#BAE6FF")
+        $card.BackColor = $cardBgColor
         $card.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
         $card.Cursor = [System.Windows.Forms.Cursors]::Hand
 
         $lblIcon = New-Object System.Windows.Forms.Label
         $lblIcon.Text = $item.Icon
         $lblIcon.Font = $emojiFontCard
+        $lblIcon.ForeColor = $textColor
         $lblIcon.Location = New-Object System.Drawing.Point(8, 12)
         $lblIcon.Size = New-Object System.Drawing.Size(40, 40)
         $lblIcon.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
@@ -486,15 +507,16 @@ function Build-TabCustomization {
         $lblName = New-Object System.Windows.Forms.Label
         $lblName.Text = $item.Title
         $lblName.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+        $lblName.ForeColor = $textColor
         $lblName.Location = New-Object System.Drawing.Point(52, 12)
         $lblName.Size = New-Object System.Drawing.Size(200, 20)
 
         $lblSub = New-Object System.Windows.Forms.Label
         $lblSub.Text = $item.Subtitle
         $lblSub.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
+        $lblSub.ForeColor = $subTextColor
         $lblSub.Location = New-Object System.Drawing.Point(52, 34)
         $lblSub.Size = New-Object System.Drawing.Size(200, 28)
-        $lblSub.ForeColor = [System.Drawing.Color]::DimGray
 
         $card.Controls.Add($lblName)
         $card.Controls.Add($lblSub)

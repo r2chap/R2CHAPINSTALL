@@ -1,7 +1,7 @@
 ﻿# ==========================================
 # MODULE : SOFTWARE (Programme)
 # Fichier : modules/Software.ps1
-# Version : v1.9
+# Version : v1.9 (Aligné sur Charte Sombre)
 # ==========================================
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -105,19 +105,19 @@ $script:InvokeInstallBlock = {
     if ($BtnInstallAll) { $BtnInstallAll.Enabled = $false }
 
     # ÉTAPE 1 : MISE À JOUR DES SOURCES WINGET
-    Write-Log -Message "Mise à jour des catalogues de sources Winget..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[PROGRAMMES] Mise à jour des catalogues de sources Winget..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
     if ($ParentForm) { $ParentForm.Refresh() }
 
     $updateProcess = Start-Process -FilePath "winget" -ArgumentList "source update" -NoNewWindow -PassThru -Wait
 
-    Write-Log -Message "Début de l'installation ($totalPackages paquet(s) au total)..." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[PROGRAMMES] Début de l'installation ($totalPackages paquet(s) au total)..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
 
     # ÉTAPE 2 : INSTALLATION DES APPLICATIONS
     foreach ($app in $AppsToInstall) {
         $pkgList = @($app.Id)
 
         foreach ($pkgId in $pkgList) {
-            Write-Log -Message "Installation de $($app.Name) [$pkgId]..." -Color ([System.Drawing.Color]::Yellow)
+            Write-Log -Message "[PROGRAMMES] Installation de $($app.Name) [$pkgId]..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
             if ($ParentForm) { $ParentForm.Refresh() }
 
             $process = Start-Process -FilePath "winget" -ArgumentList "install --id `"$pkgId`" -s winget -e --silent --accept-package-agreements --accept-source-agreements" -NoNewWindow -PassThru -Wait
@@ -126,16 +126,16 @@ $script:InvokeInstallBlock = {
             $statusMessage = Get-WingetErrorMessage -Code $exitCode
 
             if ($exitCode -eq 0 -or $exitCode -eq -1978335189) {
-                Write-Log -Message "SUCCÈS : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::ForestGreen)
+                Write-Log -Message "[PROGRAMMES] SUCCÈS : $pkgId -> $statusMessage" -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
             } else {
-                Write-Log -Message "ERREUR : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::Red)
+                Write-Log -Message "[PROGRAMMES] ERREUR : $pkgId -> $statusMessage" -Color ([System.Drawing.Color]::Red)
             }
 
             if ($ParentForm) { $ParentForm.Refresh() }
         }
     }
 
-    Write-Log -Message "Opérations terminées." -Color ([System.Drawing.Color]::Cyan)
+    Write-Log -Message "[PROGRAMMES] Opérations terminées." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     if ($BtnInstallAll) { $BtnInstallAll.Enabled = $true }
 }
 
@@ -149,20 +149,30 @@ function Build-TabProgramme {
         [System.Drawing.Color]$BgColor
     )
 
+    # PALETTE DE COULEURS SOMBRES & HAUT CONTRASTE
+    $textColor    = [System.Drawing.ColorTranslator]::FromHtml("#F1F4F4")
+    $subTextColor = [System.Drawing.ColorTranslator]::FromHtml("#A0AAB0")
+    $cardBgColor  = [System.Drawing.ColorTranslator]::FromHtml("#0A3468") # Bleu sombre uniforme
+    $btnGreen     = [System.Drawing.ColorTranslator]::FromHtml("#0B6B3A") # Vert sombre action
+    
+    $TargetTab.BackColor = $BgColor
+
+    Write-Log -Message "Module Programmes chargé." -Color $textColor
+
     # Bouton Tout Installer
     $btnInstallAll = New-Object System.Windows.Forms.Button
     $btnInstallAll.Text = "⚡ Installer tous les programmes"
-    $btnInstallAll.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
-    $btnInstallAll.Size = New-Object System.Drawing.Size(250, 32)
+    $btnInstallAll.Font = New-Object System.Drawing.Font("Segoe UI Emoji", 9.5, [System.Drawing.FontStyle]::Bold)
+    $btnInstallAll.Size = New-Object System.Drawing.Size(265, 32)
     $btnInstallAll.Location = New-Object System.Drawing.Point(10, 10)
-    $btnInstallAll.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#28A745")
-    $btnInstallAll.ForeColor = [System.Drawing.Color]::White
+    $btnInstallAll.BackColor = $btnGreen
+    $btnInstallAll.ForeColor = $textColor
     $btnInstallAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnInstallAll.FlatAppearance.BorderSize = 0
     $btnInstallAll.Cursor = [System.Windows.Forms.Cursors]::Hand
     $TargetTab.Controls.Add($btnInstallAll)
 
-    # Conteneur des cartes d'applications (Agrandit car le log local est retiré)
+    # Conteneur des cartes d'applications
     $appsPanel = New-Object System.Windows.Forms.Panel
     $appsPanel.Location = New-Object System.Drawing.Point(10, 50)
     $appsPanel.Size = New-Object System.Drawing.Size(840, 280)
@@ -186,7 +196,7 @@ function Build-TabProgramme {
         $card = New-Object System.Windows.Forms.Panel
         $card.Size = New-Object System.Drawing.Size($cardWidth, $cardHeight)
         $card.Location = New-Object System.Drawing.Point($posX, $posY)
-        $card.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#A2CDFF")
+        $card.BackColor = $cardBgColor
         $card.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
         $card.Cursor = [System.Windows.Forms.Cursors]::Hand
 
@@ -204,10 +214,10 @@ function Build-TabProgramme {
         } else {
             $lblIcon = New-Object System.Windows.Forms.Label
             $lblIcon.Text = $app.FallbackIcon
-            $lblIcon.Font = New-Object System.Drawing.Font("Segoe UI", 16)
+            $lblIcon.Font = New-Object System.Drawing.Font("Segoe UI Emoji", 16)
             $lblIcon.Location = New-Object System.Drawing.Point(10, 15)
             $lblIcon.Size = New-Object System.Drawing.Size(35, 35)
-            $lblIcon.ForeColor = [System.Drawing.Color]::Black
+            $lblIcon.ForeColor = $textColor
             $card.Controls.Add($lblIcon)
             $iconControl = $lblIcon
         }
@@ -217,14 +227,14 @@ function Build-TabProgramme {
         $lblName.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
         $lblName.Location = New-Object System.Drawing.Point(58, 12)
         $lblName.Size = New-Object System.Drawing.Size(190, 20)
-        $lblName.ForeColor = [System.Drawing.Color]::Black
+        $lblName.ForeColor = $textColor
 
         $lblCat = New-Object System.Windows.Forms.Label
         $lblCat.Text = $app.Category
         $lblCat.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
         $lblCat.Location = New-Object System.Drawing.Point(58, 35)
         $lblCat.Size = New-Object System.Drawing.Size(190, 18)
-        $lblCat.ForeColor = [System.Drawing.Color]::DimGray
+        $lblCat.ForeColor = $subTextColor
 
         $card.Controls.Add($lblName)
         $card.Controls.Add($lblCat)

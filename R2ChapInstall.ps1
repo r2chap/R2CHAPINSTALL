@@ -39,7 +39,6 @@ $localLogo      = Join-Path $LocalTargetDir "Logo.png"
 # Chemins des images dans le dossier assets
 $assetsDir     = Join-Path $ScriptDir "assets"
 $imgUpdatePath = Join-Path $assetsDir "mise-a-jour-du-systeme.png"
-# $imgSettingsPath = Join-Path $assetsDir "parametres.png" (Désactivé)
 
 # ------------------------------------------
 # HELPER : REDIMENSIONNEMENT DES IMAGES (PNG)
@@ -68,7 +67,7 @@ function Get-ResizedImage ($filePath, $width, $height) {
 function Write-Log {
     param(
         [string]$Message,
-        [System.Drawing.Color]$Color = ([System.Drawing.Color]::White)
+        [System.Drawing.Color]$Color = ([System.Drawing.ColorTranslator]::FromHtml("#F1F4F4"))
     )
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $formattedMsg = "[$timestamp] $Message"
@@ -192,17 +191,19 @@ function Start-TotalConversion {
         "Warning"
     )
     if ($result -eq "Yes") {
-        Write-Log -Message "Démarrage du processus de Total Conversion..." -Color ([System.Drawing.Color]::Cyan)
+        Write-Log -Message "Démarrage du processus de Total Conversion..." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
     }
 }
 
 # ------------------------------------------
 # 2. APPLICATION & FENÊTRE PRINCIPALE
 # ------------------------------------------
-$bgColor       = [System.Drawing.ColorTranslator]::FromHtml("#85BBFF")
-$headerBgColor = [System.Drawing.ColorTranslator]::FromHtml("#6CA8F7")
-$activeTabBg   = [System.Drawing.Color]::White
-$inactiveTabBg = [System.Drawing.ColorTranslator]::FromHtml("#A2CDFF")
+# CHARTE GRAPHIQUE
+$bgColor       = [System.Drawing.ColorTranslator]::FromHtml("#1E2726")
+$textColor     = [System.Drawing.ColorTranslator]::FromHtml("#F1F4F4")
+$headerBgColor = [System.Drawing.ColorTranslator]::FromHtml("#141A19")
+$activeTabBg   = [System.Drawing.ColorTranslator]::FromHtml("#1E2726")
+$inactiveTabBg = [System.Drawing.ColorTranslator]::FromHtml("#293534")
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "R2Chap Install - Windows Deployer $ScriptVersion"
@@ -211,7 +212,7 @@ $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $False
 $form.BackColor = $bgColor
-$form.ForeColor = [System.Drawing.Color]::Black
+$form.ForeColor = $textColor
 
 # --- Zone d'en-tête ---
 $headerPanel = New-Object System.Windows.Forms.Panel
@@ -234,7 +235,7 @@ if ($logoPath) {
 $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = "R2CHAP INSTALL"
 $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
-$lblTitle.ForeColor = [System.Drawing.Color]::Black
+$lblTitle.ForeColor = $textColor
 $lblTitle.Location = New-Object System.Drawing.Point(75, 12)
 $lblTitle.Size = New-Object System.Drawing.Size(250, 25)
 $headerPanel.Controls.Add($lblTitle)
@@ -242,7 +243,7 @@ $headerPanel.Controls.Add($lblTitle)
 $lblSubTitle = New-Object System.Windows.Forms.Label
 $lblSubTitle.Text = "Déploiement & Optimisation System - $ScriptVersion"
 $lblSubTitle.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
-$lblSubTitle.ForeColor = [System.Drawing.Color]::Black
+$lblSubTitle.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#A0AAB0")
 $lblSubTitle.Location = New-Object System.Drawing.Point(75, 38)
 $lblSubTitle.Size = New-Object System.Drawing.Size(300, 20)
 $headerPanel.Controls.Add($lblSubTitle)
@@ -276,9 +277,9 @@ $headerPanel.Controls.Add($btnUpdateIcon)
 $tabControl = New-Object System.Windows.Forms.TabControl
 $tabControl.Location = New-Object System.Drawing.Point(10, 80)
 $tabControl.Size = New-Object System.Drawing.Size(865, 380)
-$tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+$tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $tabControl.SizeMode = [System.Windows.Forms.TabSizeMode]::Normal
-$tabControl.ItemSize = New-Object System.Drawing.Size(135, 30)
+$tabControl.ItemSize = New-Object System.Drawing.Size(140, 30)
 $tabControl.DrawMode = [System.Windows.Forms.TabDrawMode]::OwnerDrawFixed
 $form.Controls.Add($tabControl)
 
@@ -302,7 +303,7 @@ $tabControl.add_DrawItem({
     
     $isSelected = ($evtSender.SelectedIndex -eq $idx)
     $fillBrush = if ($isSelected) { New-Object System.Drawing.SolidBrush($activeTabBg) } else { New-Object System.Drawing.SolidBrush($inactiveTabBg) }
-    $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
+    $textBrush = if ($isSelected) { New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml("#2CFF05")) } else { New-Object System.Drawing.SolidBrush($textColor) }
 
     $radius = 10
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -328,17 +329,18 @@ function Add-CustomTab ($title) {
     $tab = New-Object System.Windows.Forms.TabPage
     $tab.Text = $title
     $tab.BackColor = $bgColor
-    $tab.ForeColor = [System.Drawing.Color]::Black
+    $tab.ForeColor = $textColor
     $tabControl.Controls.Add($tab)
     return $tab
 }
 
-# Création des onglets
-$tabProgramme    = Add-CustomTab "Programme"
-$tabDrivers      = Add-CustomTab "Drivers"
-$tabCustomR2chap = Add-CustomTab "Custom R2chap"
-$tabTweaks       = Add-CustomTab "Tweaks"
-$tabMajWindows   = Add-CustomTab "Màj Windows"
+# Création des 6 onglets
+$tabProgramme      = Add-CustomTab "Programme"
+$tabDrivers        = Add-CustomTab "Drivers"
+$tabBackupTransfer = Add-CustomTab "Sauvegarde & Transfert"
+$tabCustomR2chap   = Add-CustomTab "Custom R2chap"
+$tabTweaks         = Add-CustomTab "Tweaks"
+$tabMajWindows     = Add-CustomTab "Màj Windows"
 
 # ------------------------------------------
 # 4. CONSOLE DE LOGS GLOBALE (Unique pour toute l'application)
@@ -346,14 +348,14 @@ $tabMajWindows   = Add-CustomTab "Màj Windows"
 $global:MainLogBox = New-Object System.Windows.Forms.RichTextBox
 $global:MainLogBox.Location = New-Object System.Drawing.Point(10, 468)
 $global:MainLogBox.Size = New-Object System.Drawing.Size(865, 135)
-$global:MainLogBox.BackColor = [System.Drawing.Color]::Black
-$global:MainLogBox.ForeColor = [System.Drawing.Color]::White
+$global:MainLogBox.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#141A19")
+$global:MainLogBox.ForeColor = $textColor
 $global:MainLogBox.ReadOnly = $true
 $global:MainLogBox.Font = New-Object System.Drawing.Font("Consolas", 9.5, [System.Drawing.FontStyle]::Regular)
 $form.Controls.Add($global:MainLogBox)
 
 # Message d'accueil du log
-Write-Log -Message "R2Chap Install $ScriptVersion initialisé." -Color ([System.Drawing.Color]::LightGreen)
+Write-Log -Message "R2Chap Install $ScriptVersion initialisé." -Color ([System.Drawing.ColorTranslator]::FromHtml("#2CFF05"))
 
 # ------------------------------------------
 # 5. CHARGEMENT DU CONTENU VIA MODULES
@@ -361,7 +363,7 @@ Write-Log -Message "R2Chap Install $ScriptVersion initialisé." -Color ([System.
 
 function Show-ModuleMissingLabel ($targetTab, $moduleName) {
     $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = "⚠ Erreur : Le module $moduleName n'a pas pu être chargé."
+    $lbl.Text = "⚠ Erreur : Le module $moduleName n'a pas pou être chargé."
     $lbl.ForeColor = [System.Drawing.Color]::Red
     $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $lbl.Location = New-Object System.Drawing.Point(20, 20)
@@ -376,14 +378,21 @@ if (Get-Command "Build-TabProgramme" -ErrorAction SilentlyContinue) {
     Show-ModuleMissingLabel -targetTab $tabProgramme -moduleName "Software.ps1"
 }
 
-# 2. Module Drivers (✅ CORRIGÉ : Ajout du paramètre -GlobalLogBox)
+# 2. Module Drivers
 if (Get-Command "Build-TabDrivers" -ErrorAction SilentlyContinue) {
-    Build-TabDrivers -TargetTab $tabDrivers -ParentForm $form -GlobalLogBox $global:MainLogBox -BgColor $bgColor
+    Build-TabDrivers -TargetTab $tabDrivers -ParentForm $form -BgColor $bgColor
 } else {
     Show-ModuleMissingLabel -targetTab $tabDrivers -moduleName "Drivers.ps1"
 }
 
-# 3. Module Customization (Custom R2chap)
+# 3. Module Backup & Transfert
+if (Get-Command "Build-TabBackupTransfer" -ErrorAction SilentlyContinue) {
+    Build-TabBackupTransfer -TargetTab $tabBackupTransfer -ParentForm $form -BgColor $bgColor
+} else {
+    Show-ModuleMissingLabel -targetTab $tabBackupTransfer -moduleName "BackupTransfer.ps1"
+}
+
+# 4. Module Customization (Custom R2chap)
 if (Get-Command "Build-TabCustomR2chap" -ErrorAction SilentlyContinue) {
     Build-TabCustomR2chap -TargetTab $tabCustomR2chap -ParentForm $form -BgColor $bgColor
 } elseif (Get-Command "Build-TabCustomization" -ErrorAction SilentlyContinue) {
@@ -392,7 +401,7 @@ if (Get-Command "Build-TabCustomR2chap" -ErrorAction SilentlyContinue) {
     Show-ModuleMissingLabel -targetTab $tabCustomR2chap -moduleName "Customization.ps1"
 }
 
-# 4. Module System Tweaks
+# 5. Module System Tweaks
 if (Get-Command "Build-TabTweaks" -ErrorAction SilentlyContinue) {
     Build-TabTweaks -TargetTab $tabTweaks -ParentForm $form -BgColor $bgColor
 } elseif (Get-Command "Build-TabSystemTweaks" -ErrorAction SilentlyContinue) {
@@ -401,7 +410,7 @@ if (Get-Command "Build-TabTweaks" -ErrorAction SilentlyContinue) {
     Show-ModuleMissingLabel -targetTab $tabTweaks -moduleName "SystemTweaks.ps1"
 }
 
-# 5. Module Windows Update
+# 6. Module Windows Update
 if (Get-Command "Build-TabMajWindows" -ErrorAction SilentlyContinue) {
     Build-TabMajWindows -TargetTab $tabMajWindows -ParentForm $form -BgColor $bgColor
 } elseif (Get-Command "Build-TabWindowsUpdate" -ErrorAction SilentlyContinue) {
@@ -420,7 +429,7 @@ $btnQuitter.Size = New-Object System.Drawing.Size(100, 35)
 $btnQuitter.Location = New-Object System.Drawing.Point(775, 612)
 $btnQuitter.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnQuitter.FlatAppearance.BorderSize = 0
-$btnQuitter.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FF0000")
+$btnQuitter.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FF0000") # Rouge conservé
 $btnQuitter.ForeColor = [System.Drawing.Color]::White
 $btnQuitter.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnQuitter.Add_Click({ $form.Close() })
@@ -433,7 +442,7 @@ $btnTotalConversion.Size = New-Object System.Drawing.Size(140, 35)
 $btnTotalConversion.Location = New-Object System.Drawing.Point(625, 612)
 $btnTotalConversion.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnTotalConversion.FlatAppearance.BorderSize = 0
-$btnTotalConversion.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#B007B5")
+$btnTotalConversion.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#A40BF2") # Violet néon
 $btnTotalConversion.ForeColor = [System.Drawing.Color]::White
 $btnTotalConversion.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnTotalConversion.Add_Click({ Start-TotalConversion })
